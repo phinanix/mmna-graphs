@@ -84,12 +84,13 @@ impl GraphAdjMatrix {
         self.vertices().all(|v| self.without_vertex(v).is_connected())
     }
 
-    fn enumerate_all_size(num_vs: u8) -> impl Iterator<Self> {
-        0..(num_vs * (num_vs - 1) / 2).map(|n|
+    fn enumerate_all_size(num_vs: u8) -> impl Iterator<Item=Self> {
+        (0..(num_vs * (num_vs - 1) / 2)).map(|n|
             // for vertex 
               //for smaller vertex 
                 //connect if bit is set
-                // n>>=1
+                // n>>=1\
+                unimplemented!()
         )
     }
 
