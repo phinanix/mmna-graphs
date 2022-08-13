@@ -1,0 +1,45 @@
+Data structures
+- graph
+  - delete vertex
+  - delete edge
+  - merge two vertices
+  ?
+  - edge list 
+  - adjacency matrix
+
+- planar embedding of G
+  - for each vertex, a list of adjacent vertices in clockwise order
+  - a face is specified by a single directed edge
+    - which gives an ordered list of vertices which is a cycle 
+
+Enumerations
+- all graphs of a given vertex count / given vertex and edge count 
+- all planar graphs 
+
+Testing
+- planarity tester
+- apex tester
+- mmna tester
+
+MMNA facts
+- connected (modulo 3 known examples)
+  - biconnected, actually 
+- for all v. exists u. st G - v - u planar
+- minimum degree 3 
+
+Planar embedding pseudocode
+
+(requires G biconnected)
+
+find a cycle of G, embed the cycle trivially as H, E(H)
+return DMP(G, H, E(H))
+
+DMP(G, H, E(H))
+1) compute all bridges of H wrt G
+1.5) if there are none, return E(H) (which is E(G))
+2) for each bridge, compute all admissible faces 
+3) select a bridge B with minimum number of admissible faces, and 
+3.5) if B has 0 admissible faces, return nonplanar
+4) select a path P across the bridge (endpoints in H)
+5) embed P to make H', E(H')
+6) return DMP(G, H', E(H'))
