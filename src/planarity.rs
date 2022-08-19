@@ -1,5 +1,5 @@
 use std::iter::once;
-use std::fmt::Debug;
+use std::fmt::{Debug, Write};
 use itertools::Itertools;
 use smallvec::SmallVec;
 
@@ -10,7 +10,7 @@ type Vertex = u8;
 #[derive(Debug, Default, Clone)]
 struct GraphEdgeList(Vec<(Vertex, Vertex)>); //edge list
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
 struct GraphAdjMatrix{
     vertex_list: [bool; MAX_VS],
     adj_matrix: [[bool; MAX_VS]; MAX_VS]
@@ -83,13 +83,15 @@ impl GraphAdjMatrix {
         visited == self.vertex_list
     }
 
-    fn is_biconnected(self) -> bool {
+    fn is_biconnected(&self) -> bool {
         // thingy is connected
         // for vertex delete vertex, still connected
         self.is_connected() &&
         self.vertices().all(|v| self.without_vertex(v).is_connected())
     }
 
+    // note that this only enumerates connected graphs (but it enumerates isomorphic 
+    // graphs multiple times; less times than you would think for labelled graphs)
     fn enumerate_all_size(num_vs: u8) -> impl Iterator<Item=Self> {
         assert!(num_vs > 0);
         let max_graph : Vec<u64> = (0.. num_vs)
@@ -153,6 +155,27 @@ impl From<&[u64]> for GraphAdjMatrix {
             }
         }
         out
+    }
+}
+
+impl Debug for GraphAdjMatrix {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct Row([bool; MAX_VS]);
+        impl Debug for Row {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                for x in self.0 {
+                    match x {
+                        true => f.write_char('#')?,
+                        false => f.write_char('.')?
+                    }
+                }
+                Ok(())
+            }
+        }
+        f.debug_struct("GraphAdjMatrix")
+         .field("vertex_list", &Row(self.vertex_list))
+         .field("adj_matrix", &self.adj_matrix.map(|x|Row(x)))
+         .finish()
     }
 }
 
@@ -264,10 +287,13 @@ mod test {
     fn three_hundred_and_fifteen_graphs_size_5() {
         assert_eq!(1*3*7*15, GraphAdjMatrix::enumerate_all_size(5).count())
     }
+    // there is K_6, five versions of K_6 without an edge (but you can't delete (0,1))
+    // and 2 of the three versions of K_6 minus two parallel edges (but you can't 
+    // delete (0, 1))
     #[test]
-    fn connected_graphs_size_4() {
-        assert_eq!(18, GraphAdjMatrix::enumerate_all_size(4)
-            .filter(GraphAdjMatrix::is_connected).count())
+    fn biconnected_graphs_size_4() {
+        assert_eq!(8, GraphAdjMatrix::enumerate_all_size(4)
+            .filter(GraphAdjMatrix::is_biconnected).count())
     }
     #[test]    
     fn more() {
