@@ -1,3 +1,5 @@
+use std::iter::once;
+use std::fmt::Debug;
 use itertools::Itertools;
 use smallvec::SmallVec;
 
@@ -21,6 +23,10 @@ impl GraphAdjMatrix {
         self.vertex_list[v as usize] = true
     }
 
+    fn with_vertex(mut self, v: Vertex) -> GraphAdjMatrix{
+        self.add_vertex(v);
+        self
+    }
     fn add_edge(&mut self, u: Vertex, v: Vertex) {
 
         //assert!(g.vertex_list[u as usize] && g.vertex_list[v as usize]);
@@ -85,13 +91,46 @@ impl GraphAdjMatrix {
     }
 
     fn enumerate_all_size(num_vs: u8) -> impl Iterator<Item=Self> {
-        (0..(num_vs * (num_vs - 1) / 2)).map(|n|
-            // for vertex 
-              //for smaller vertex 
-                //connect if bit is set
-                // n>>=1\
-                unimplemented!()
-        )
+        assert!(num_vs > 0);
+        let max_graph : Vec<u64> = (0.. num_vs)
+            .map(|n| 2_u64.pow(n.into()) - 1)
+            .collect();
+        struct GraphIter{
+            max_graph : Vec<u64>,
+            cur_graph : Vec<u64>,
+        }
+        
+        impl Iterator for GraphIter {
+            type Item=GraphAdjMatrix;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.cur_graph.last().expect("no vertices") == &0 {return None}
+                let out = Some(self.cur_graph.as_slice().into());
+                //we increment after the return now
+                for i in 0..(self.cur_graph.len() - 1) { 
+                    if self.cur_graph[i] == 0 {
+                        self.cur_graph[i] = self.max_graph[i];
+                        self.cur_graph[i+1] -= 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                out
+            }
+        }
+        
+        // if num_vs == 1 {
+        //     return once(Self::default().with_vertex(0))
+        // }
+        // (0..(num_vs * (num_vs - 1) / 2)).map(|n|
+        //     // for vertex 
+        //       //for smaller vertex 
+        //         //connect if bit is set
+        //         // n>>=1\
+        //         unimplemented!()
+        // )
+        return GraphIter{max_graph : max_graph.clone(), cur_graph : max_graph}
     }
 
 }
@@ -99,6 +138,21 @@ impl GraphAdjMatrix {
 impl From<GraphEdgeList> for GraphAdjMatrix {
     fn from(list: GraphEdgeList) -> Self {
         list.0.iter().fold(Default::default(), |g, (u,v)| g.with_edge(*u, *v))
+    }
+}
+
+impl From<&[u64]> for GraphAdjMatrix {
+    fn from(rows: &[u64]) -> Self {
+        let mut out = GraphAdjMatrix::default();
+        let num_vs = rows.len();
+        for x in 0..num_vs {
+            for y in 0..x {
+                if (rows[x] >> y) & 1 != 0 {
+                    out.add_edge(x as u8, y as u8);
+                }
+            }
+        }
+        out
     }
 }
 
@@ -143,6 +197,14 @@ mod test {
     fn one_e_el() -> GraphEdgeList {
         GraphEdgeList(vec![(0,1)])
     }
+
+    fn k_n(n : Vertex) -> GraphAdjMatrix {
+        let mut k_n = GraphAdjMatrix::default();
+        for x in 0..n { for y in 0..x {
+            k_n.add_edge(x, y);
+        }}
+        k_n
+    }
     #[test]
     fn one_e_el_is_one_e() {
         assert_eq!(one_e(), one_e_el().into())
@@ -183,5 +245,32 @@ mod test {
         two_e.add_edge(1,2);
         assert!(two_e.is_connected());
         assert!(!two_e.is_biconnected());
+    }
+
+    #[test]
+    fn k_3_two_ways() {
+        assert_eq!(k_n(3), ([0, 1, 3]).as_slice().into())
+    }
+
+    #[test]
+    fn three_graphs_size_3() {
+        assert_eq!(3, GraphAdjMatrix::enumerate_all_size(3).count())
+    }
+    #[test]    
+    fn twenty_one_graphs_size_4() {
+        assert_eq!(21, GraphAdjMatrix::enumerate_all_size(4).count())
+    }
+    #[test]    
+    fn three_hundred_and_fifteen_graphs_size_5() {
+        assert_eq!(1*3*7*15, GraphAdjMatrix::enumerate_all_size(5).count())
+    }
+    #[test]
+    fn connected_graphs_size_4() {
+        assert_eq!(18, GraphAdjMatrix::enumerate_all_size(4)
+            .filter(GraphAdjMatrix::is_connected).count())
+    }
+    #[test]    
+    fn more() {
+        //assert_eq!(1*3*7*15*31, GraphAdjMatrix::enumerate_all_size(6).count())
     }
 }
