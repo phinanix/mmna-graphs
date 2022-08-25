@@ -43,3 +43,4 @@ DMP(G, H, E(H))
 4) select a path P across the bridge (endpoints in H)
 5) embed P to make H', E(H')
 6) return DMP(G, H', E(H'))
+DMP 

@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::iter::once;
 use std::fmt::{Debug, Write};
 use itertools::Itertools;
@@ -10,7 +11,7 @@ type Vertex = u8;
 #[derive(Debug, Default, Clone)]
 struct GraphEdgeList(Vec<(Vertex, Vertex)>); //edge list
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 struct GraphAdjMatrix{
     vertex_list: [bool; MAX_VS],
     adj_matrix: [[bool; MAX_VS]; MAX_VS]
@@ -27,6 +28,7 @@ impl GraphAdjMatrix {
         self.add_vertex(v);
         self
     }
+
     fn add_edge(&mut self, u: Vertex, v: Vertex) {
 
         //assert!(g.vertex_list[u as usize] && g.vertex_list[v as usize]);
@@ -63,11 +65,12 @@ impl GraphAdjMatrix {
     fn vertices(&self) -> impl Iterator<Item = Vertex> {
         self.vertex_list.into_iter().positions(|x| x).map(|i| i as Vertex)
     }
-
-
     
+    fn largest_vertex(&self) -> Vertex {
+        self.vertex_list.into_iter().rposition(|x|x).expect("no vertices") as u8
+    }
     fn is_connected(&self) -> bool {
-        let first_v = largest_vertex(self);
+        let first_v = self.largest_vertex();
         //todo intersect visited is empty 
         let mut visited = [false; MAX_VS];
         let mut todo = [false; MAX_VS];
@@ -122,17 +125,36 @@ impl GraphAdjMatrix {
             }
         }
         
-        // if num_vs == 1 {
-        //     return once(Self::default().with_vertex(0))
-        // }
-        // (0..(num_vs * (num_vs - 1) / 2)).map(|n|
-        //     // for vertex 
-        //       //for smaller vertex 
-        //         //connect if bit is set
-        //         // n>>=1\
-        //         unimplemented!()
-        // )
         return GraphIter{max_graph : max_graph.clone(), cur_graph : max_graph}
+    }
+
+    //precondition: biconnected nontrivial
+    fn find_cycle(&self) -> Face {
+        let mut path = vec![self.largest_vertex()];
+        path.push(self.neighbors(path[0]).next().unwrap());
+        let seen: HashSet<Vertex> = path.iter().copied().collect(); //TODO bitset
+        loop {
+
+        }
+        // seen: set<vertex>
+        // path = list<vertex>
+        // been = stack<(vertex, max visited vertex))>
+        // let cycle_start = loop{
+        //     next vertex
+        //     if next in seen
+        //       break cycle_start = next
+        //     else 
+        //         seen.push next
+        //         path.push next
+        // }
+        // for thing in path {
+        //     if thing  == cycle_start
+        //         return path[thing..]
+        // }
+    }
+
+    fn neighbors(&self, v: Vertex) -> impl Iterator<Item=Vertex> + '_ {
+        self.adj_matrix[v as usize].iter().enumerate().filter(|(i,x)|**x).map(|(i,x)|i as Vertex)
     }
 
 }
@@ -184,7 +206,8 @@ struct PlanarEmbedding {
     clockwise_neighbors: Vec<SmallVec<[Vertex; MAX_VS]>>,
 }
 
-struct Face((Vertex, Vertex));
+#[derive(Clone)]
+struct Face(SmallVec<[Vertex; MAX_VS]>);
 
 fn vertices_el(g: GraphEdgeList) -> Vec<Vertex> {
     g.0.into_iter().flat_map(|(x, y)| [x, y]).unique().collect()
@@ -194,11 +217,29 @@ fn largest_vertex_el(g: GraphEdgeList) -> Vertex {
     g.0.into_iter().flat_map(|(x, y)| [x, y]).max().expect("No vertices")
 }
 
-
-fn largest_vertex(g: &GraphAdjMatrix) -> Vertex {
-    g.vertex_list.into_iter().rposition(|x|x).expect("no vertices") as u8
+type Bridge = GraphAdjMatrix;
+fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
+    // let mut starting_face: Face =
+    //     match g.find_cycle() {
+    //         Some(c) => c,
+    //         None => return Ok(PlanarEmbedding::from_tree(g))
+    //     }
+    // let mut h = GraphAdjMatrix::default();
+    // for (&u,&v) in starting_face.0.iter().zip(&starting_face.0[1..]) {
+    //     h.add_edge(u, v)
+    // }
+    // let mut bridges = g.split_on(&h);
+    // let mut embed = PlanarEmbedding::from_cycle(&starting_face);
+    // let mut faces = vec![starting_face.clone(), starting_face.reverse()];
+    // //TODO fix this type to be indirect to canonical list of faces
+    // let mut destinations: HashMap<Bridge, Vec<Face>> =
+    //     bridges.iter().map(|x|(x,faces.clone())).collect();
+    // while !bridges.empty() {
+    //     h.embed(bridges.next())?
+    // }
+    // Ok(embed)
+    todo!()
 }
-
 
 #[cfg(test)]
 mod test {
@@ -298,5 +339,15 @@ mod test {
     #[test]    
     fn more() {
         //assert_eq!(1*3*7*15*31, GraphAdjMatrix::enumerate_all_size(6).count())
+    }
+    #[test]
+    fn k_4_has_neighbors() {
+        assert_eq!(vec![1,2,3], k_n(4).neighbors(0).collect::<Vec<_>>())
+    }
+    #[test]
+
+    fn k_3_one_cycle() {
+        //assert_eq!(vec![2,0,1], k_n(3).find_cycle().0.into_vec())
+        //todo
     }
 }
