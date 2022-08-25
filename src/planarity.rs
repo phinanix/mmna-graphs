@@ -1,10 +1,11 @@
-use std::collections::{HashMap, HashSet};
-use std::iter::once;
+#![allow(unused)] // tests dont seem to count
+
+use std::collections::{HashSet};
 use std::fmt::{Debug, Write};
 use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
 
-const MAX_VS : usize = 5;
+const MAX_VS : usize = 6;
 
 type Vertex = u8;
 
@@ -43,6 +44,16 @@ impl GraphAdjMatrix {
 
     fn with_edge(mut self, u: Vertex, v: Vertex) -> GraphAdjMatrix {
         self.add_edge(u, v);
+        self
+    }
+
+    fn delete_edge(&mut self, u: Vertex, v: Vertex) {
+        self.adj_matrix[u as usize][v as usize] = false;
+        self.adj_matrix[v as usize][u as usize] = false;
+    }
+
+    fn without_edge(mut self, u: Vertex, v: Vertex) -> GraphAdjMatrix {
+        self.delete_edge(u, v);
         self
     }
 
@@ -128,7 +139,7 @@ impl GraphAdjMatrix {
         return GraphIter{max_graph : max_graph.clone(), cur_graph : max_graph}
     }
 
-    //precondition: biconnected 3+ vertices
+    //precondition: biconnected 3+ vertice
     fn find_cycle(&self) -> Face {
         let mut path = smallvec![self.largest_vertex()];
         path.push(self.neighbors(path[0]).next().unwrap());
@@ -150,6 +161,36 @@ impl GraphAdjMatrix {
 
     fn neighbors(&self, v: Vertex) -> impl Iterator<Item=Vertex> + '_ {
         self.adj_matrix[v as usize].iter().enumerate().filter(|(i,x)|**x).map(|(i,x)|i as Vertex)
+    }
+
+    fn split_on(&self, h: &GraphAdjMatrix) -> Vec<GraphAdjMatrix> {
+        let mut starts: SmallVec<[bool; MAX_VS]> =
+            self.vertex_list.iter().zip(h.vertex_list).map(|(&sv,hv)|sv&!hv).collect();
+        let mut bridges = vec![];
+        while let Some(cur_v) = starts.iter().position(|x| *x) {
+            //todo intersect visited is empty 
+            let mut visited = [false; MAX_VS];
+            let mut todo = [false; MAX_VS];
+            todo[cur_v as usize] = true;
+        
+            let mut fragment = GraphAdjMatrix::default();
+            while let Some(cur_v) = todo.into_iter().position(|x| x) {
+                todo[cur_v] = false;
+                visited[cur_v] = true;
+                starts[cur_v] = false; 
+                for (v, adj) in self.adj_matrix[cur_v].into_iter().enumerate() {
+                    if adj {
+                        fragment.add_edge(cur_v as Vertex,v as Vertex);
+                        if !visited[v] && !h.vertex_list[v] { 
+                            todo[v] = true
+                        }
+                    }
+                }
+
+            }
+            bridges.push(fragment);
+        }
+        bridges
     }
 
 }
@@ -201,7 +242,7 @@ struct PlanarEmbedding {
     clockwise_neighbors: Vec<SmallVec<[Vertex; MAX_VS]>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 struct Face(SmallVec<[Vertex; MAX_VS]>);
 
 fn vertices_el(g: GraphEdgeList) -> Vec<Vertex> {
@@ -214,16 +255,15 @@ fn largest_vertex_el(g: GraphEdgeList) -> Vertex {
 
 type Bridge = GraphAdjMatrix;
 fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
-    // let mut starting_face: Face =
-    //     match g.find_cycle() {
-    //         Some(c) => c,
-    //         None => return Ok(PlanarEmbedding::from_tree(g))
-    //     }
-    // let mut h = GraphAdjMatrix::default();
-    // for (&u,&v) in starting_face.0.iter().zip(&starting_face.0[1..]) {
-    //     h.add_edge(u, v)
-    // }
-    // let mut bridges = g.split_on(&h);
+    let mut starting_face: Face = g.find_cycle();
+    let mut h = GraphAdjMatrix::default();
+    for (&u,&v) in starting_face.0.iter().zip(
+            starting_face.0[1..].iter().chain(&starting_face.0[..1])
+        ) {
+            h.add_edge(u, v)
+    }
+    let mut bridges = g.split_on(&h);
+    dbg!(h,bridges);
     // let mut embed = PlanarEmbedding::from_cycle(&starting_face);
     // let mut faces = vec![starting_face.clone(), starting_face.reverse()];
     // //TODO fix this type to be indirect to canonical list of faces
@@ -233,7 +273,8 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
     //     h.embed(bridges.next())?
     // }
     // Ok(embed)
-    todo!()
+    // todo!()
+    None
 }
 
 #[cfg(test)]
@@ -323,8 +364,8 @@ mod test {
     fn three_hundred_and_fifteen_graphs_size_5() {
         assert_eq!(1*3*7*15, GraphAdjMatrix::enumerate_all_size(5).count())
     }
-    // there is K_6, five versions of K_6 without an edge (but you can't delete (0,1))
-    // and 2 of the three versions of K_6 minus two parallel edges (but you can't 
+    // there is K_4, five versions of K_4 without an edge (but you can't delete (0,1))
+    // and 2 of the three versions of K_4 minus two parallel edges (but you can't 
     // delete (0, 1))
     #[test]
     fn biconnected_graphs_size_4() {
@@ -340,8 +381,28 @@ mod test {
         assert_eq!(vec![1,2,3], k_n(4).neighbors(0).collect::<Vec<_>>())
     }
     #[test]
-
     fn k_3_one_cycle() {
         assert_eq!(vec![0,1,2], k_n(3).find_cycle().0.into_vec())
+    }
+
+    #[test]
+    fn split_k4_minus(){
+        let k4_minus = k_n(4).without_edge(0,1);
+        let shared_edge = GraphAdjMatrix::default().with_edge(2, 3);
+        assert_eq!(
+            k4_minus.split_on(&shared_edge),
+            [vec![(0,2),(0,3)], vec![(1,2),(1,3)]].into_iter()
+                .map(|v| GraphEdgeList(v).into()).collect::<Vec<GraphAdjMatrix>>()
+        )
+    }
+    
+    #[test]
+    fn split_k6_minus_minus(){
+        let k6mm = k_n(6).without_edge(3,4).without_edge(3,5);
+        assert_eq!(
+            k6mm.split_on(&k_n(3)),
+            [vec![(3,0),(3,1),(3,2)], vec![(4,0),(4,1),(4,2),(5,0),(5,1),(5,2),(4,5)]].into_iter()
+                .map(|v| GraphEdgeList(v).into()).collect::<Vec<GraphAdjMatrix>>()
+        );
     }
 }
