@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::once;
 use std::fmt::{Debug, Write};
 use itertools::Itertools;
-use smallvec::SmallVec;
+use smallvec::{smallvec,SmallVec};
 
 const MAX_VS : usize = 5;
 
@@ -128,29 +128,24 @@ impl GraphAdjMatrix {
         return GraphIter{max_graph : max_graph.clone(), cur_graph : max_graph}
     }
 
-    //precondition: biconnected nontrivial
+    //precondition: biconnected 3+ vertices
     fn find_cycle(&self) -> Face {
-        let mut path = vec![self.largest_vertex()];
+        let mut path = smallvec![self.largest_vertex()];
         path.push(self.neighbors(path[0]).next().unwrap());
-        let seen: HashSet<Vertex> = path.iter().copied().collect(); //TODO bitset
-        loop {
-
+        let mut prev = path[0];
+        let mut seen: HashSet<Vertex> = [prev].into_iter().collect(); //TODO bitset
+        while !seen.contains(path.last().unwrap()) {
+            seen.insert(*path.last().unwrap());
+            let next = self.neighbors(*path.last().unwrap()).filter(|&x|x!=prev).next()
+                       .expect("unexpected degree 1 vertex in 'biconnected' graph");
+            prev = *path.last().unwrap();
+            path.push(next);
         }
-        // seen: set<vertex>
-        // path = list<vertex>
-        // been = stack<(vertex, max visited vertex))>
-        // let cycle_start = loop{
-        //     next vertex
-        //     if next in seen
-        //       break cycle_start = next
-        //     else 
-        //         seen.push next
-        //         path.push next
-        // }
-        // for thing in path {
-        //     if thing  == cycle_start
-        //         return path[thing..]
-        // }
+        while path[0] != *path.last().unwrap() {
+            path.drain(..=0);  // pop_front until we hit the cyclical part
+        }
+        path.drain(..=0);  // only mention loop point once
+        return Face(path)
     }
 
     fn neighbors(&self, v: Vertex) -> impl Iterator<Item=Vertex> + '_ {
@@ -347,7 +342,6 @@ mod test {
     #[test]
 
     fn k_3_one_cycle() {
-        //assert_eq!(vec![2,0,1], k_n(3).find_cycle().0.into_vec())
-        //todo
+        assert_eq!(vec![0,1,2], k_n(3).find_cycle().0.into_vec())
     }
 }
