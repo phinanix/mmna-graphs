@@ -284,7 +284,26 @@ struct PlanarEmbedding {
 
 impl PlanarEmbedding {
     fn add_path(&mut self, path: &VertexVec, face: &Face) {
-        todo!()
+        //warning: gross
+        for (&u,&v) in face.0.iter().zip(face.0[1..].iter().chain(&face.0[..1])) {
+            if v == path[0] {
+                //add path[1] to v's clockwise neighbors just before u 
+                let u_index = self.clockwise_neighbors[v as usize].iter()
+                  .position(|&x| x == u).unwrap();
+                self.clockwise_neighbors[v as usize].insert(u_index, path[1]);
+            }
+            else if v == *path.last().unwrap() {
+                let u_index = self.clockwise_neighbors[v as usize].iter()
+                  .position(|&x| x == u).unwrap();
+                self.clockwise_neighbors[v as usize].insert(u_index, path[path.len()-2]);
+            }        
+        }
+        for (&u,&v) in path[1..].iter().zip(path[2..].iter()) {
+            self.clockwise_neighbors[v as usize].push(u);
+            self.clockwise_neighbors[u as usize].push(v);
+        }
+        self.clockwise_neighbors[path[1] as usize].push(path[0]);
+        self.clockwise_neighbors[path[path.len()-2] as usize].push(path[path.len()-1])
     }
 }
 #[derive(Clone,Debug)]
@@ -512,5 +531,10 @@ mod test {
         let r: VertexVec = smallvec![1,3,0];
         let asdf = k_n(4).split_on(&smallvec![0,1,2]).next().unwrap();
         assert_eq!(asdf.find_path_using(&Face(smallvec![0,1,2])), r)
+    }
+
+    #[test]
+    fn add_path_random_example() {
+        //todo
     }
 }
