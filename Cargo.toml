@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 itertools = "0.10.3"
+literal = "0.2.0"
 smallvec = "1.9.0"

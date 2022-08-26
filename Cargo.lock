@@ -18,10 +18,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "literal"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1098cb40d9a755c5c61003c7d4b5fb890d393bc14cc14024b4000b184e6c9669"
+
+[[package]]
 name = "mmna-graphs"
 version = "0.1.0"
 dependencies = [
  "itertools",
+ "literal",
  "smallvec",
 ]
 

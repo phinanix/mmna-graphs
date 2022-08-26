@@ -1,13 +1,16 @@
 #![allow(unused)] // tests dont seem to count
 
+use std::char::MAX;
 use std::collections::{HashSet};
 use std::fmt::{Debug, Write};
 use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
+use literal::{set, SetLiteral};
 
-const MAX_VS : usize = 6;
+const MAX_VS : usize = 8;
 
 type Vertex = u8;
+type VertexVec = SmallVec<[Vertex;MAX_VS]>;
 
 #[derive(Debug, Default, Clone)]
 struct GraphEdgeList(Vec<(Vertex, Vertex)>); //edge list
@@ -82,7 +85,7 @@ impl GraphAdjMatrix {
     }
     fn is_connected(&self) -> bool {
         let first_v = self.largest_vertex();
-        //todo intersect visited is empty 
+        //invariant: todo intersect visited is empty 
         let mut visited = [false; MAX_VS];
         let mut todo = [false; MAX_VS];
         todo[first_v as usize] = true;
@@ -163,12 +166,14 @@ impl GraphAdjMatrix {
         self.adj_matrix[v as usize].iter().enumerate().filter(|(i,x)|**x).map(|(i,x)|i as Vertex)
     }
 
-    fn split_on(&self, h: &GraphAdjMatrix) -> Vec<GraphAdjMatrix> {
+    fn split_on(&self, h: &VertexVec) -> impl Iterator<Item=GraphAdjMatrix> {
+        let h_vertex_list: [bool; MAX_VS] =
+            h.iter().fold([false; MAX_VS], |mut acc,i|{acc[*i as usize] = true; acc});
         let mut starts: SmallVec<[bool; MAX_VS]> =
-            self.vertex_list.iter().zip(h.vertex_list).map(|(&sv,hv)|sv&!hv).collect();
+            self.vertex_list.iter().zip(h_vertex_list).map(|(&sv,hv)|sv&!hv).collect();
         let mut bridges = vec![];
         while let Some(cur_v) = starts.iter().position(|x| *x) {
-            //todo intersect visited is empty 
+            //invariant: todo intersect visited is empty 
             let mut visited = [false; MAX_VS];
             let mut todo = [false; MAX_VS];
             todo[cur_v as usize] = true;
@@ -181,7 +186,7 @@ impl GraphAdjMatrix {
                 for (v, adj) in self.adj_matrix[cur_v].into_iter().enumerate() {
                     if adj {
                         fragment.add_edge(cur_v as Vertex,v as Vertex);
-                        if !visited[v] && !h.vertex_list[v] { 
+                        if !visited[v] && !h_vertex_list[v] { 
                             todo[v] = true
                         }
                     }
@@ -190,7 +195,41 @@ impl GraphAdjMatrix {
             }
             bridges.push(fragment);
         }
-        bridges
+        bridges.into_iter()
+    }
+
+    fn find_path_using(&self, face: &Face) -> VertexVec {
+        let first_v = self.vertices().filter(|v|face.0.contains(v)).next()
+                      .expect("Not touching face");
+        //invariant: todo intersect visited is empty 
+        let mut visited_from: [Option<Vertex>; MAX_VS] = [None; MAX_VS];
+        let mut todo: [Option<Vertex>; MAX_VS] = [None; MAX_VS];
+        todo[first_v as usize] = Some(first_v);
+
+        while let Some(cur_v) = todo.into_iter().position(|x|x.is_some()) {
+            visited_from[cur_v] = todo[cur_v]; 
+            todo[cur_v] = None;
+            for (v, adj) in self.adj_matrix[cur_v].into_iter().enumerate() {
+                if adj && visited_from[v].is_none() && todo[v].is_none() { 
+                    todo[v] = Some(cur_v as Vertex);
+                    if face.0.contains(&(v as Vertex)) {
+                        let mut path = smallvec![v as Vertex];
+                        let mut tail = cur_v as Vertex;
+                        while tail != first_v {
+                            path.push(tail);
+                            tail = visited_from[tail as usize].unwrap();
+                        }
+                        path.push(first_v);
+                        return path
+                    }
+                }
+            }
+        }
+        panic!("No path found")
+    }
+
+    fn add_path_edges(&mut self, path: &VertexVec) {
+        todo!()
     }
 
 }
@@ -237,14 +276,27 @@ impl Debug for GraphAdjMatrix {
     }
 }
 
+#[derive(Debug)]
 struct PlanarEmbedding {
     //clockwise_neighbors[v] is a list of v's neighbors, clockwise
-    clockwise_neighbors: Vec<SmallVec<[Vertex; MAX_VS]>>,
+    clockwise_neighbors: Vec<VertexVec>,
 }
 
+impl PlanarEmbedding {
+    fn add_path(&mut self, path: &VertexVec, face: &Face) {
+        todo!()
+    }
+}
 #[derive(Clone,Debug)]
-struct Face(SmallVec<[Vertex; MAX_VS]>);
+struct Face(VertexVec);
 
+
+impl Face {
+    fn bisect(&self, path: &VertexVec) -> (Face, Face) {
+        todo!()
+    }
+}
+    
 fn vertices_el(g: GraphEdgeList) -> Vec<Vertex> {
     g.0.into_iter().flat_map(|(x, y)| [x, y]).unique().collect()
 }
@@ -257,24 +309,69 @@ type Bridge = GraphAdjMatrix;
 fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
     let mut starting_face: Face = g.find_cycle();
     let mut h = GraphAdjMatrix::default();
+    let mut embed = PlanarEmbedding{
+        clockwise_neighbors: [0; MAX_VS].map(|_|smallvec![]).into()
+    };
     for (&u,&v) in starting_face.0.iter().zip(
             starting_face.0[1..].iter().chain(&starting_face.0[..1])
         ) {
-            h.add_edge(u, v)
+            h.add_edge(u, v);
+            embed.clockwise_neighbors[v as usize].push(u);
+            embed.clockwise_neighbors[u as usize].push(v);
     }
-    let mut bridges = g.split_on(&h);
-    dbg!(h,bridges);
-    // let mut embed = PlanarEmbedding::from_cycle(&starting_face);
-    // let mut faces = vec![starting_face.clone(), starting_face.reverse()];
-    // //TODO fix this type to be indirect to canonical list of faces
-    // let mut destinations: HashMap<Bridge, Vec<Face>> =
-    //     bridges.iter().map(|x|(x,faces.clone())).collect();
-    // while !bridges.empty() {
-    //     h.embed(bridges.next())?
-    // }
-    // Ok(embed)
-    // todo!()
-    None
+    let bridges = g.split_on(&starting_face.0);
+    let mut faces = vec![starting_face.clone(),{
+        starting_face.0.reverse();
+        starting_face
+    }];
+    //usize idx into faces TODO bitvector
+    let mut bridges: Vec<(Bridge, HashSet<usize>)> =
+        bridges.into_iter().map(|x|(x,set!{0u8,1u8})).collect();
+    //dbg!(h,bridges);
+    while !bridges.is_empty() {
+        let (idx, (next_bridge, valid_faces)) =
+            bridges.iter().enumerate().min_by_key(|(i,(b,v))|v.len()).unwrap();
+        //no valid faces = no valid embedding
+        let face_idx = *valid_faces.iter().next()?;
+        let face = faces[face_idx].clone();
+        let path: VertexVec = next_bridge.find_path_using(&face);
+        let next_bridge = next_bridge.clone();
+        bridges.remove(idx);
+        h.add_path_edges(&path);
+        embed.add_path(&path, &face);
+        let (face_l, face_r) = face.bisect(&path);
+        faces[face_idx] = face_l.clone();
+        let face_l_idx = face_idx;
+        let face_r_idx = faces.len();
+        faces.push(face_r.clone());
+        let new_faces = [face_idx, face_r_idx];
+        fn can_be_embedded(new_face: &Face, face: &Face, bridge: &Bridge) -> bool {
+            //invariant: new_face was produced b y splitting face
+            //(face & bridge.vertices()) - new_face == {}
+            bridge.vertices()
+                .filter(|v|face.0.contains(v))
+                .filter(|v|!new_face.0.contains(v))
+                .next().is_none()
+        }
+        for (bridge, valid) in /*remaining*/ &mut bridges {
+            if valid.contains(&face_idx) {
+                valid.remove(&face_idx);
+                if can_be_embedded(&face_l, &face, bridge) {
+                    valid.insert(face_l_idx);
+                }
+                if can_be_embedded(&face_r, &face, bridge) {
+                    valid.insert(face_r_idx);
+                }
+            }
+        }
+        let new_bridges = next_bridge.split_on(&path).into_iter().map(
+            |bridge| (bridge, new_faces.into_iter().filter(
+                |&f| can_be_embedded(&faces[f], &face, &bridge)
+            ).collect())
+        );
+        bridges.extend(new_bridges);
+    }
+    Some(embed)
 }
 
 #[cfg(test)]
@@ -381,6 +478,11 @@ mod test {
         assert_eq!(vec![1,2,3], k_n(4).neighbors(0).collect::<Vec<_>>())
     }
     #[test]
+    fn k_4_dmp_watdo() {
+        dmp_embed(&k_n(4));
+    }
+
+    #[test]
     fn k_3_one_cycle() {
         assert_eq!(vec![0,1,2], k_n(3).find_cycle().0.into_vec())
     }
@@ -388,9 +490,8 @@ mod test {
     #[test]
     fn split_k4_minus(){
         let k4_minus = k_n(4).without_edge(0,1);
-        let shared_edge = GraphAdjMatrix::default().with_edge(2, 3);
         assert_eq!(
-            k4_minus.split_on(&shared_edge),
+            k4_minus.split_on(&smallvec![2,3]).collect::<Vec<GraphAdjMatrix>>(),
             [vec![(0,2),(0,3)], vec![(1,2),(1,3)]].into_iter()
                 .map(|v| GraphEdgeList(v).into()).collect::<Vec<GraphAdjMatrix>>()
         )
@@ -400,9 +501,16 @@ mod test {
     fn split_k6_minus_minus(){
         let k6mm = k_n(6).without_edge(3,4).without_edge(3,5);
         assert_eq!(
-            k6mm.split_on(&k_n(3)),
+            k6mm.split_on(&k_n(3).vertices().collect()).collect::<Vec<GraphAdjMatrix>>(),
             [vec![(3,0),(3,1),(3,2)], vec![(4,0),(4,1),(4,2),(5,0),(5,1),(5,2),(4,5)]].into_iter()
                 .map(|v| GraphEdgeList(v).into()).collect::<Vec<GraphAdjMatrix>>()
         );
+    }
+
+    #[test]
+    fn k4_path_through_k3(){
+        let r: VertexVec = smallvec![1,3,0];
+        let asdf = k_n(4).split_on(&smallvec![0,1,2]).next().unwrap();
+        assert_eq!(asdf.find_path_using(&Face(smallvec![0,1,2])), r)
     }
 }
