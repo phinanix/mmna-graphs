@@ -7,7 +7,7 @@ use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
 use literal::{set, SetLiteral};
 
-const MAX_VS : usize = 8;
+const MAX_VS : usize = 10;
 
 type Vertex = u8;
 type VertexVec = SmallVec<[Vertex;MAX_VS]>;
@@ -15,6 +15,7 @@ type VertexVec = SmallVec<[Vertex;MAX_VS]>;
 #[derive(Debug, Default, Clone)]
 struct GraphEdgeList(Vec<(Vertex, Vertex)>); //edge list
 
+//TODO: should this really be copy?
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 struct GraphAdjMatrix{
     vertex_list: [bool; MAX_VS],
@@ -81,8 +82,9 @@ impl GraphAdjMatrix {
     }
     
     fn largest_vertex(&self) -> Vertex {
-        self.vertex_list.into_iter().rposition(|x|x).expect("no vertices") as u8
+        self.vertex_list.into_iter().rposition(|x| x).expect("no vertices") as u8
     }
+
     fn is_connected(&self) -> bool {
         let first_v = self.largest_vertex();
         //invariant: todo intersect visited is empty 
@@ -229,7 +231,9 @@ impl GraphAdjMatrix {
     }
 
     fn add_path_edges(&mut self, path: &VertexVec) {
-        todo!()
+        for (&u, &v) in path.iter().zip(path[1..].iter()) {
+            self.add_edge(u, v)
+        }
     }
 
 }
@@ -276,6 +280,7 @@ impl Debug for GraphAdjMatrix {
     }
 }
 
+
 #[derive(Debug)]
 struct PlanarEmbedding {
     //clockwise_neighbors[v] is a list of v's neighbors, clockwise
@@ -298,24 +303,54 @@ impl PlanarEmbedding {
                 self.clockwise_neighbors[v as usize].insert(u_index, path[path.len()-2]);
             }        
         }
-        for (&u,&v) in path[1..].iter().zip(path[2..].iter()) {
+        for (&u,&v) in path[1..].iter().zip(path[2..(path.len()-1)].iter()) {
             self.clockwise_neighbors[v as usize].push(u);
             self.clockwise_neighbors[u as usize].push(v);
         }
         self.clockwise_neighbors[path[1] as usize].push(path[0]);
-        self.clockwise_neighbors[path[path.len()-2] as usize].push(path[path.len()-1])
+        self.clockwise_neighbors[path[path.len()-2] as usize].push(path[path.len()-1]);
     }
 }
+
+
 #[derive(Clone,Debug)]
 struct Face(VertexVec);
 
-
 impl Face {
     fn bisect(&self, path: &VertexVec) -> (Face, Face) {
-        todo!()
+        let path_start_index = self.0.iter().position(|&v| v == path[0]).unwrap();
+        let path_end_index = self.0.iter().position(|&v| v == path[path.len() - 1]).unwrap();
+        //the two faces are start->end + rev path and end->start + path
+        
+        let s_to_e_len = if path_end_index > path_start_index 
+            { path_start_index + self.0.len() - path_end_index }
+            else 
+            { path_start_index - path_end_index};
+        let mut s_e_face : VertexVec = smallvec![];
+        for i in 0..(s_to_e_len) {s_e_face.push(self.0[(path_start_index+i).rem_euclid(self.0.len())])}
+        let mut bw_path = path.clone();
+        bw_path.reverse();
+        //because otherwise the last element of the path will be duplicated
+        bw_path.pop().unwrap();
+        s_e_face.append(&mut bw_path);
+        
+        let e_to_s_len = if path_start_index > path_end_index 
+            { path_end_index + self.0.len() - path_start_index }
+            else 
+            { path_end_index - path_start_index};
+        let mut e_s_face : VertexVec = smallvec![];
+        for i in 0..(e_to_s_len) {e_s_face.push(self.0[(path_end_index+i).rem_euclid(self.0.len())])}
+        let mut fw_path = path.clone();
+        //because otherwise the last element of the path will be duplicated
+        fw_path.pop().unwrap();
+        e_s_face.append(&mut fw_path);
+        
+        
+        (Face(s_e_face), Face(e_s_face))
     }
 }
     
+//todo: delete ?
 fn vertices_el(g: GraphEdgeList) -> Vec<Vertex> {
     g.0.into_iter().flat_map(|(x, y)| [x, y]).unique().collect()
 }
@@ -383,6 +418,8 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
                 }
             }
         }
+        //todo I think this copies |bridge| multiples for some reason, 
+        //this line should be writeable without clone (or Copy) I think
         let new_bridges = next_bridge.split_on(&path).into_iter().map(
             |bridge| (bridge, new_faces.into_iter().filter(
                 |&f| can_be_embedded(&faces[f], &face, &bridge)
@@ -490,7 +527,7 @@ mod test {
     }
     #[test]    
     fn more() {
-        //assert_eq!(1*3*7*15*31, GraphAdjMatrix::enumerate_all_size(6).count())
+        assert_eq!(1*3*7*15*31, GraphAdjMatrix::enumerate_all_size(6).count())
     }
     #[test]
     fn k_4_has_neighbors() {
@@ -498,7 +535,7 @@ mod test {
     }
     #[test]
     fn k_4_dmp_watdo() {
-        dmp_embed(&k_n(4));
+        dbg![dmp_embed(&k_n(4))];
     }
 
     #[test]
@@ -533,8 +570,39 @@ mod test {
         assert_eq!(asdf.find_path_using(&Face(smallvec![0,1,2])), r)
     }
 
+    fn random_example() -> (Face, PlanarEmbedding, VertexVec) {
+        let starting_face = smallvec![1,8,3,7,4,2];
+        let mut embed = PlanarEmbedding{
+            clockwise_neighbors: [0; MAX_VS].map(|_|smallvec![]).into()
+        };
+        for (&u,&v) in starting_face.iter().zip(
+                starting_face[1..].iter().chain(&starting_face[..1])
+            ) {
+                embed.clockwise_neighbors[v as usize].push(u);
+                embed.clockwise_neighbors[u as usize].push(v);
+        }
+        let path = smallvec![8,5,6,4];
+        (Face(starting_face), embed, path)
+    }
+    // random example. the cycle is 8, 3, 7, 4, 2, 1
+    // the path within the cycle is 8,5,6,4
     #[test]
     fn add_path_random_example() {
-        //todo
+        let (face, mut embed, path) = random_example();
+        embed.add_path(&path, &face);
+        let ans1 : VertexVec = smallvec![5,1,3];
+        let ans2 : VertexVec = smallvec![6,7,2];
+        assert_eq!(embed.clockwise_neighbors[8], ans1);
+        assert_eq!(embed.clockwise_neighbors[4], ans2); 
+    }
+
+    #[test]
+    fn bisect_random_example() {
+        let (face, embed, path) = random_example();
+        let (face_l, face_r) = face.bisect(&path);
+        let ans1 : VertexVec = smallvec![8,3,7,4,6,5];
+        let ans2 : VertexVec = smallvec![4,2,1,8,5,6];
+        assert_eq!(face_l.0, ans1);
+        assert_eq!(face_r.0, ans2);
     }
 }
