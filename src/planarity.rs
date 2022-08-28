@@ -281,7 +281,7 @@ impl Debug for GraphAdjMatrix {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct PlanarEmbedding {
     //clockwise_neighbors[v] is a list of v's neighbors, clockwise
     clockwise_neighbors: Vec<VertexVec>,
@@ -300,20 +300,27 @@ impl PlanarEmbedding {
             else if v == *path.last().unwrap() {
                 let u_index = self.clockwise_neighbors[v as usize].iter()
                   .position(|&x| x == u).unwrap();
-                self.clockwise_neighbors[v as usize].insert(u_index, path[path.len()-2]);
+                self.clockwise_neighbors[v as usize].insert(
+                    u_index, path[path.len()-2]);
             }        
         }
-        for (&u,&v) in path[1..].iter().zip(path[2..(path.len()-1)].iter()) {
-            self.clockwise_neighbors[v as usize].push(u);
-            self.clockwise_neighbors[u as usize].push(v);
+        //we need a pair of internal vertices, ie length 4
+        if path.len() >= 4 {
+            for (&u,&v) in path[1..].iter().zip(path[2..(path.len()-1)].iter()) {
+                self.clockwise_neighbors[v as usize].push(u);
+                self.clockwise_neighbors[u as usize].push(v);
+            }
         }
-        self.clockwise_neighbors[path[1] as usize].push(path[0]);
-        self.clockwise_neighbors[path[path.len()-2] as usize].push(path[path.len()-1]);
+        //we need at least 1 internal vertex, ie length 3
+        if path.len() >= 3 {
+            self.clockwise_neighbors[path[1] as usize].push(path[0]);
+            self.clockwise_neighbors[path[path.len()-2] as usize].push(path[path.len()-1]);
+        }
     }
 }
 
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq, Eq)]
 struct Face(VertexVec);
 
 impl Face {
@@ -321,11 +328,10 @@ impl Face {
         let path_start_index = self.0.iter().position(|&v| v == path[0]).unwrap();
         let path_end_index = self.0.iter().position(|&v| v == path[path.len() - 1]).unwrap();
         //the two faces are start->end + rev path and end->start + path
-        
-        let s_to_e_len = if path_end_index > path_start_index 
-            { path_start_index + self.0.len() - path_end_index }
+        let s_to_e_len = if path_start_index > path_end_index 
+            { path_end_index + self.0.len() - path_start_index }
             else 
-            { path_start_index - path_end_index};
+            { path_end_index - path_start_index};
         let mut s_e_face : VertexVec = smallvec![];
         for i in 0..(s_to_e_len) {s_e_face.push(self.0[(path_start_index+i).rem_euclid(self.0.len())])}
         let mut bw_path = path.clone();
@@ -334,10 +340,10 @@ impl Face {
         bw_path.pop().unwrap();
         s_e_face.append(&mut bw_path);
         
-        let e_to_s_len = if path_start_index > path_end_index 
-            { path_end_index + self.0.len() - path_start_index }
+        let e_to_s_len = if path_end_index > path_start_index 
+            { path_start_index + self.0.len() - path_end_index }
             else 
-            { path_end_index - path_start_index};
+            { path_start_index - path_end_index};
         let mut e_s_face : VertexVec = smallvec![];
         for i in 0..(e_to_s_len) {e_s_face.push(self.0[(path_end_index+i).rem_euclid(self.0.len())])}
         let mut fw_path = path.clone();
@@ -381,7 +387,7 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
     //usize idx into faces TODO bitvector
     let mut bridges: Vec<(Bridge, HashSet<usize>)> =
         bridges.into_iter().map(|x|(x,set!{0u8,1u8})).collect();
-    //dbg!(h,bridges);
+    //dbg!(&h,&bridges);
     while !bridges.is_empty() {
         let (idx, (next_bridge, valid_faces)) =
             bridges.iter().enumerate().min_by_key(|(i,(b,v))|v.len()).unwrap();
@@ -539,6 +545,22 @@ mod test {
     }
 
     #[test]
+    fn k_5_dmp_not_embed() {
+        assert_eq!(dmp_embed(&k_n(5)), None);
+    }
+
+    #[test]
+    fn k_3_dmp_embed() {
+        let mut embed = PlanarEmbedding{
+            clockwise_neighbors: [0; MAX_VS].map(|_|smallvec![]).into()
+        };
+        embed.clockwise_neighbors[0] = smallvec![1,2];
+        embed.clockwise_neighbors[1] = smallvec![0,2];
+        embed.clockwise_neighbors[2] = smallvec![1,0];
+        assert_eq!(dmp_embed(&k_n(3)), Some(embed));
+    }
+
+    #[test]
     fn k_3_one_cycle() {
         assert_eq!(vec![0,1,2], k_n(3).find_cycle().0.into_vec())
     }
@@ -604,5 +626,17 @@ mod test {
         let ans2 : VertexVec = smallvec![4,2,1,8,5,6];
         assert_eq!(face_l.0, ans1);
         assert_eq!(face_r.0, ans2);
+    }
+
+    #[test]
+    fn bisect_k4_wrong_example() {
+        let face = Face(smallvec![0,2,1]);
+        let path = smallvec![1,3,0];
+        //let (face_l, face_r) = face.bisect(&path);
+        let faces = face.bisect(&path);
+        let goals = (Face(smallvec![1,0,3]), Face(smallvec![0,2,1,3]));
+        assert_eq!(faces, goals);
+        // assert_eq!(face_r, goal_r);
+        // assert_eq!(face_l, goal_l);
     }
 }

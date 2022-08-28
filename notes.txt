@@ -44,3 +44,9 @@ DMP(G, H, E(H))
 5) embed P to make H', E(H')
 6) return DMP(G, H', E(H'))
 DMP 
+
+note that a mimsy (MMNA) graph is extremely restricted in form:
+it has to be such that deleting any single edge leaves an apex graph 
+so you could for instance enumerate all apex graphs and then try adding all 
+single edges to them, though whether there is some better way to do this is unclear
+
