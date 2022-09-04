@@ -51,6 +51,13 @@ impl GraphAdjMatrix {
         self
     }
 
+    fn with_edges(mut self, edges: &Vec<(Vertex, Vertex)>) -> GraphAdjMatrix {
+        for &(u, v) in edges.iter() {
+            self.add_edge(u, v)
+        }
+        self
+    }
+
     fn delete_edge(&mut self, u: Vertex, v: Vertex) {
         self.adj_matrix[u as usize][v as usize] = false;
         self.adj_matrix[v as usize][u as usize] = false;
@@ -168,9 +175,9 @@ impl GraphAdjMatrix {
         self.adj_matrix[v as usize].iter().enumerate().filter(|(i,x)|**x).map(|(i,x)|i as Vertex)
     }
 
-    fn split_on(&self, h: &VertexVec) -> impl Iterator<Item=GraphAdjMatrix> {
-        let h_vertex_list: [bool; MAX_VS] =
-            h.iter().fold([false; MAX_VS], |mut acc,i|{acc[*i as usize] = true; acc});
+    fn split_on(&self, h: &GraphAdjMatrix) -> impl Iterator<Item=GraphAdjMatrix> {
+        let h_vertex_list: [bool; MAX_VS] = h.vertex_list;
+            //h.iter().fold([false; MAX_VS], |mut acc,i|{acc[*i as usize] = true; acc});
         let mut starts: SmallVec<[bool; MAX_VS]> =
             self.vertex_list.iter().zip(h_vertex_list).map(|(&sv,hv)|sv&!hv).collect();
         let mut bridges = vec![];
@@ -197,6 +204,14 @@ impl GraphAdjMatrix {
             }
             bridges.push(fragment);
         }
+        //above obtains all bridges with at least 1 vertex not in h. 
+        //now we need to obtain all the bridges which are exactly 1 edge between 2 vertices of h.
+        for v in h.vertices() { for u in h.vertices() {
+            if v < u && self.adj_matrix[u as usize][v as usize] 
+                && ! (h.adj_matrix[u as usize][v as usize]) {
+                    bridges.push(GraphAdjMatrix::default().with_edge(u, v))
+            }
+        }}
         bridges.into_iter()
     }
 
@@ -367,6 +382,7 @@ fn largest_vertex_el(g: GraphEdgeList) -> Vertex {
 
 type Bridge = GraphAdjMatrix;
 fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
+    //precondition: g has at least 3 vertices, and g is biconnected. 
     let mut starting_face: Face = g.find_cycle();
     let mut h = GraphAdjMatrix::default();
     let mut embed = PlanarEmbedding{
@@ -379,7 +395,7 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
             embed.clockwise_neighbors[v as usize].push(u);
             embed.clockwise_neighbors[u as usize].push(v);
     }
-    let bridges = g.split_on(&starting_face.0);
+    let bridges = g.split_on(&h);
     let mut faces = vec![starting_face.clone(),{
         starting_face.0.reverse();
         starting_face
@@ -389,10 +405,12 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
         bridges.into_iter().map(|x|(x,set!{0u8,1u8})).collect();
     //dbg!(&h,&bridges);
     while !bridges.is_empty() {
+        dbg!(&h, &bridges);
         let (idx, (next_bridge, valid_faces)) =
             bridges.iter().enumerate().min_by_key(|(i,(b,v))|v.len()).unwrap();
         //no valid faces = no valid embedding
         let face_idx = *valid_faces.iter().next()?;
+        dbg!(next_bridge, valid_faces, &faces);
         let face = faces[face_idx].clone();
         let path: VertexVec = next_bridge.find_path_using(&face);
         let next_bridge = next_bridge.clone();
@@ -426,7 +444,9 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
         }
         //todo I think this copies |bridge| multiples for some reason, 
         //this line should be writeable without clone (or Copy) I think
-        let new_bridges = next_bridge.split_on(&path).into_iter().map(
+        let path_graph = GraphAdjMatrix::default().with_edges(
+            &path.iter().zip(path[1..].iter()).map(|(&x, &y)| (x, y)).collect());
+        let new_bridges = next_bridge.split_on(&path_graph).into_iter().map(
             |bridge| (bridge, new_faces.into_iter().filter(
                 |&f| can_be_embedded(&faces[f], &face, &bridge)
             ).collect())
@@ -550,6 +570,28 @@ mod test {
     }
 
     #[test]
+    fn split_on_k_5_minus() {
+        let k5_minus = k_n(5).without_edge(0, 1);
+        let cycle = k_n(4).without_edge(0,1).without_edge(2,3);
+        let ans: Vec<_> = k5_minus.split_on(&cycle).into_iter().collect_vec();
+        let bridge1 = GraphAdjMatrix::default().with_edges(
+            &vec![(0, 4),(1, 4), (2, 4), (3, 4)]);
+        let bridge2 = GraphAdjMatrix::default().with_edge(2, 3);
+        dbg!(&ans, &bridge1, &bridge2);
+        assert_eq!(ans, vec![bridge1, bridge2])
+    }
+
+    #[test]
+    fn k_5_minus_embed() {
+        let k5_minus = k_n(5).without_edge(0, 1);
+        let ans = Some(PlanarEmbedding { clockwise_neighbors: 
+            vec![smallvec![3, 4, 2], smallvec![2, 4, 3], smallvec![4, 1, 3, 0], 
+            smallvec![2, 1, 4, 0], smallvec![3, 1, 2, 0], 
+            smallvec![], smallvec![], smallvec![], smallvec![], smallvec![]] });
+        assert_eq!(dmp_embed(&k5_minus), ans);
+    }
+
+    #[test]
     fn k_3_dmp_embed() {
         let mut embed = PlanarEmbedding{
             clockwise_neighbors: [0; MAX_VS].map(|_|smallvec![]).into()
@@ -568,8 +610,9 @@ mod test {
     #[test]
     fn split_k4_minus(){
         let k4_minus = k_n(4).without_edge(0,1);
+        let edge23 = GraphAdjMatrix::default().with_edge(2, 3);
         assert_eq!(
-            k4_minus.split_on(&smallvec![2,3]).collect::<Vec<GraphAdjMatrix>>(),
+            k4_minus.split_on(&edge23).collect::<Vec<GraphAdjMatrix>>(),
             [vec![(0,2),(0,3)], vec![(1,2),(1,3)]].into_iter()
                 .map(|v| GraphEdgeList(v).into()).collect::<Vec<GraphAdjMatrix>>()
         )
@@ -579,7 +622,7 @@ mod test {
     fn split_k6_minus_minus(){
         let k6mm = k_n(6).without_edge(3,4).without_edge(3,5);
         assert_eq!(
-            k6mm.split_on(&k_n(3).vertices().collect()).collect::<Vec<GraphAdjMatrix>>(),
+            k6mm.split_on(&k_n(3)).collect::<Vec<GraphAdjMatrix>>(),
             [vec![(3,0),(3,1),(3,2)], vec![(4,0),(4,1),(4,2),(5,0),(5,1),(5,2),(4,5)]].into_iter()
                 .map(|v| GraphEdgeList(v).into()).collect::<Vec<GraphAdjMatrix>>()
         );
@@ -588,7 +631,7 @@ mod test {
     #[test]
     fn k4_path_through_k3(){
         let r: VertexVec = smallvec![1,3,0];
-        let asdf = k_n(4).split_on(&smallvec![0,1,2]).next().unwrap();
+        let asdf = k_n(4).split_on(&k_n(3)).next().unwrap();
         assert_eq!(asdf.find_path_using(&Face(smallvec![0,1,2])), r)
     }
 
@@ -638,5 +681,10 @@ mod test {
         assert_eq!(faces, goals);
         // assert_eq!(face_r, goal_r);
         // assert_eq!(face_l, goal_l);
+    }
+
+    #[test]
+    fn split_on_finds_single_edges() {
+
     }
 }
