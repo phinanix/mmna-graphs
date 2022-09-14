@@ -26,6 +26,7 @@ MMNA facts
   - biconnected, actually 
 - for all v. exists u. st G - v - u planar
 - minimum degree 3 
+- for all edge e. exists vertex v. st G - e - v planar 
 
 Planar embedding pseudocode
 
@@ -50,3 +51,78 @@ it has to be such that deleting any single edge leaves an apex graph
 so you could for instance enumerate all apex graphs and then try adding all 
 single edges to them, though whether there is some better way to do this is unclear
 
+Todo List 14 Sep 
+- general graph planarity checker 
+- apex checker 
+- mimsy checker 
+- isomorphism tester (dumb, via all perms)
+- isomorphism tester (fast, via cyclic ordering)
+- enumerate all non-isomorphic mimsy candidates 
+  - enumer planar triangulations
+  - enum planar graphs 
+  - enum apex graphs 
+  - enum candidates 
+
+- generate random graphs 
+- check invariants of random graphs 
+  - nonplanar if e > 3v-6
+  - if planar embedding is given, it should have all 
+    same vertex degrees, and satisfy v-e+f = 1+c 
+- replace [bool] with bitvec 
+- factor out "graphs" versus "planarity" files
+- performance optimization 
+
+Pseudocode for above 
+topologize: 
+1) while G has a vertex of degree <3: 
+  a) if it is deg 1, delete 
+  b) if it is deg 2, delete & replace with edge between its neighbors 
+general planarity checker: 
+1) topologize G 
+2) cut at any cut vertices, producing a list of smaller graphs 
+3) recurse to step 1 on each smaller graph 
+
+apex nonplanar checker: 
+1) delete one at a time each vertex of G: 
+2) for the resulting graph, check if planar 
+
+mimsy checker: 
+1) if G has a vertex of degree <3, return false 
+2) if G is not biconnected, return false 
+3) if G is planar, or apex nonplanar, return false
+3) for every edge of G, delete it and check if the resulting graph is 
+   apex (incl. planar), if so return true, else return false 
+
+slow canonicalization algorithm: 
+  Takes a "color" function, which returns an object for each 
+  vertex and is invariant under isomorphism 
+  (eg degree, degree + sorted list of neighbor's degrees)
+1) compute the color of every vertex
+2) compute all color preserving permutations of vertices 
+3) select the one which results in the lexigraphically first 
+   adj. matrix 
+
+fast canonicalization algorithm: 
+  also takes a "color" function 
+1) compute the color of every vertex 
+
+in the following, whenever there is an arbitrary choice, try all of them 
+2) start with the vertex with the largest color and label it 0 
+3) do a BFS starting from 0. 
+   whenever you encounter a vertex which is not labelled, give it the next label. 
+   visit neighbors in largest to smallest color order. 
+   build up a "BFS string" which when visiting a vertex, lists its neighbors by their 
+   colors the first time they are visited, and their labels all subsequent times
+   (with some sort of separator character between each vertex's adjacency list). 
+
+4) select as the canonical labelling, the lexigraphically first BFS string. 
+
+Math to work out
+prove mimsy claims: 
+ - if G is mimsy, all edge deletion minors of G are apex and nonplanar 
+ - if all edge deletion minors of G are apex, then all minors of G are apex 
+understand fast enumeration algorithm for 
+ - plane triangulations 
+ - planar graphs 
+ - apex graphs 
+ - mimsy candidates 
