@@ -1,10 +1,9 @@
 #![allow(unused)] // tests dont seem to count
 
-use std::char::MAX;
 use std::collections::{HashSet};
-use std::fmt::{Debug, Write};
+use std::fmt::{Debug};
 use itertools::Itertools;
-use smallvec::{smallvec,SmallVec};
+use smallvec::{smallvec};
 use literal::{set, SetLiteral};
 
 use crate::adj_matrix::{VertexVec, GraphAdjMatrix, MAX_VS};
@@ -112,12 +111,11 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
         bridges.into_iter().map(|x|(x,set!{0u8,1u8})).collect();
     //dbg!(&h,&bridges);
     while !bridges.is_empty() {
-        dbg!(&h, &bridges);
+        //dbg!(&h, &bridges);
         let (idx, (next_bridge, valid_faces)) =
             bridges.iter().enumerate().min_by_key(|(i,(b,v))|v.len()).unwrap();
         //no valid faces = no valid embedding
         let face_idx = *valid_faces.iter().next()?;
-        dbg!(next_bridge, valid_faces, &faces);
         let face = faces[face_idx].clone();
         let path: VertexVec = next_bridge.find_path_using(&face.0);
         let next_bridge = next_bridge.clone();
@@ -176,19 +174,24 @@ fn topologize(mut g: GraphAdjMatrix) -> GraphAdjMatrix {
 }
 
 fn check_planarity(g: &GraphAdjMatrix) -> bool {
-    let topo_g = topologize(*g); 
-    let cut_vertices : VertexVec = 
-        topo_g.vertices().filter(|&v|!topo_g.without_vertex(v).is_connected()).collect();
+    let g = topologize(*g); 
+    if g.vertices().next().is_none() {return true}
+    let cut_vertices : VertexVec = g.vertices().filter(
+        |&v|!g.without_vertex(v).is_connected()
+      ).collect();
     
     if cut_vertices.len() > 0 {    
-        todo!("recurse on pieces")
+        g.split_on(&GraphAdjMatrix::default().with_vertices(cut_vertices))
+         .all(|piece|check_planarity(&piece))
     } else {
-        dmp_embed(&topo_g).is_some()
+        dmp_embed(&g).is_some()
     }
 }
 
 #[cfg(test)]
 mod test {
+
+    use std::vec;
 
     use super::*;
     use crate::adj_matrix::{GraphAdjMatrix};
@@ -325,4 +328,39 @@ mod test {
     fn compact_one_long_edge() {
         assert_eq!(k_n(2), GraphAdjMatrix::default().with_edge(0, 3).compact_vertices())
     }
+
+    #[test]
+    fn k_3_is_planar() {
+        assert!(check_planarity(&k_n(3)))
+    }
+
+    #[test]
+    fn k_5_is_not_planar() {
+        assert!(!check_planarity(&k_n(5)))
+    }
+
+    #[test]
+    fn hourglass_is_planar() {
+        let hourglass = k_n(3).with_edges(
+            &vec![(2,3), (3,4), (2,4)]
+        );
+        assert!(check_planarity(&hourglass))
+    }
+
+    #[test]
+    fn two_k4_is_planar() {
+        let two_k4 = k_n(4).with_edges(
+            &vec![(3,4), (4,5), (5,6), (3,5), (4,6), (3,6)]
+        );
+        assert!(check_planarity(&two_k4)) 
+    }
+
+    #[test]
+    fn k5_and_k4_nonplanar() {
+        let k5_k4 = k_n(5).with_edges(
+            &vec![(7,4), (4,5), (5,6), (7,5), (4,6), (7,6)]
+        );   
+        assert!(!check_planarity(&k5_k4))     
+    }
+
 }

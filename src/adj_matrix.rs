@@ -1,10 +1,9 @@
+#![allow(unused)] // tests dont seem to count
 
-use std::char::MAX;
 use std::collections::{HashSet};
 use std::fmt::{Debug, Write};
 use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
-use literal::{set, SetLiteral};
 
 pub const MAX_VS : usize = 10;
 
@@ -25,8 +24,15 @@ impl GraphAdjMatrix {
         self.vertex_list[v as usize] = true
     }
 
-    pub fn with_vertex(mut self, v: Vertex) -> GraphAdjMatrix{
+    pub fn with_vertex(mut self, v: Vertex) -> Self{
         self.add_vertex(v);
+        self
+    }
+
+    pub fn with_vertices(mut self, vs: VertexVec) -> Self {
+        for v in vs {
+            self.add_vertex(v);
+        }
         self
     }
 
