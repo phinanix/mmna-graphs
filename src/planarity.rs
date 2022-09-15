@@ -1,13 +1,43 @@
 #![allow(unused)] // tests dont seem to count
 
 use std::collections::{HashSet};
-use std::fmt::{Debug};
+use std::fmt::{self, Debug};
 use itertools::Itertools;
 use smallvec::{smallvec};
-use literal::{set, SetLiteral};
 
 use crate::adj_matrix::{VertexVec, GraphAdjMatrix, MAX_VS};
-//use adj_matrix::{};
+
+#[derive(Clone, Copy)]
+struct BitSet(u64);
+impl BitSet {
+    fn new() -> Self { BitSet(0) }
+    fn add(&mut self, n: u8) { self.0 |= 1<<(n as u64) }
+    fn del(&mut self, n: u8) { self.0 &= !(1<<(n as u64)) }
+    fn has(&self, n: u8) -> bool { self.0 & 1<<(n as u64) != 0 }
+    fn len(&self) -> usize { self.0.count_ones() as usize}
+    fn min(&self) -> Option<u8> {
+        if self.0 == 0 { return None };
+        Some(self.0.trailing_zeros() as u8)
+    }
+    fn pop_min(&mut self) -> Option<u8> {
+        let min = self.min();
+        self.del(min?);
+        min
+    }
+}
+impl Iterator for BitSet { type Item = u8;
+    fn next(&mut self) -> Option<u8> { self.pop_min() }
+}
+impl FromIterator<u8> for BitSet {
+    fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
+        iter.into_iter().fold(Self::new(), |mut x,i|{x.add(i); x})
+    }
+}
+impl fmt::Debug for BitSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set().entries(self.clone()).finish()
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 struct PlanarEmbedding {
@@ -106,26 +136,26 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
           Face(starting_face)
         }
     ];
-    //usize idx into faces TODO bitvector
-    let mut bridges: Vec<(Bridge, HashSet<usize>)> =
-        bridges.into_iter().map(|x|(x,set!{0u8,1u8})).collect();
+    //usize idx into faces
+    let mut bridges: Vec<(Bridge, BitSet)> =
+        bridges.into_iter().map(|x|(x,[0u8,1u8].into_iter().collect())).collect();
     //dbg!(&h,&bridges);
     while !bridges.is_empty() {
         //dbg!(&h, &bridges);
         let (idx, (next_bridge, valid_faces)) =
             bridges.iter().enumerate().min_by_key(|(i,(b,v))|v.len()).unwrap();
         //no valid faces = no valid embedding
-        let face_idx = *valid_faces.iter().next()?;
-        let face = faces[face_idx].clone();
+        let face_idx = valid_faces.min()?;
+        let face = faces[face_idx as usize].clone();
         let path: VertexVec = next_bridge.find_path_using(&face.0);
         let next_bridge = next_bridge.clone();
         bridges.remove(idx);
         h.add_path_edges(&path);
         embed.add_path(&path, &face);
         let (face_l, face_r) = face.bisect(&path);
-        faces[face_idx] = face_l.clone();
+        faces[face_idx as usize] = face_l.clone();
         let face_l_idx = face_idx;
-        let face_r_idx = faces.len();
+        let face_r_idx = faces.len() as u8;
         faces.push(face_r.clone());
         let new_faces = [face_idx, face_r_idx];
         fn can_be_embedded(new_face: &Face, face: &Face, bridge: &Bridge) -> bool {
@@ -137,13 +167,13 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
                 .next().is_none()
         }
         for (bridge, valid) in /*remaining*/ &mut bridges {
-            if valid.contains(&face_idx) {
-                valid.remove(&face_idx);
+            if valid.has(face_idx) {
+                valid.del(face_idx);
                 if can_be_embedded(&face_l, &face, bridge) {
-                    valid.insert(face_l_idx);
+                    valid.add(face_l_idx);
                 }
                 if can_be_embedded(&face_r, &face, bridge) {
-                    valid.insert(face_r_idx);
+                    valid.add(face_r_idx);
                 }
             }
         }
@@ -153,7 +183,7 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
             &path.iter().zip(path[1..].iter()).map(|(&x, &y)| (x, y)).collect());
         let new_bridges = next_bridge.split_on(&path_graph).into_iter().map(
             |bridge| (bridge, new_faces.into_iter().filter(
-                |&f| can_be_embedded(&faces[f], &face, &bridge)
+                |&f| can_be_embedded(&faces[f as usize], &face, &bridge)
             ).collect())
         );
         bridges.extend(new_bridges);
@@ -229,21 +259,13 @@ mod test {
         assert_eq!(ans, vec![bridge1, bridge2])
     }
 
-    /*
-    note that this test is nondeterministic, it sometimes finds a valid but 
-    different planar embedding. the spooky thing is I don't know why - it 
-    seems to me all the relevant code shoudl be deterministic
-
-    thread 'planarity::test::k_5_minus_embed' panicked at 'assertion failed: `(left == right)`
-  left: `Some(PlanarEmbedding { clockwise_neighbors: [[4, 3, 2], [4, 2, 3], [3, 1, 4, 0], [4, 1, 2, 0], [2, 1, 3, 0], [], [], [], [], []] })`,
- right: `Some(PlanarEmbedding { clockwise_neighbors: [[3, 4, 2], [2, 4, 3], [4, 1, 3, 0], [2, 1, 4, 0], [3, 1, 2, 0], [], [], [], [], []] })`', src/planarity.rs:239:9 */
     #[test]
     fn k_5_minus_embed() {
         let k5_minus = k_n(5).without_edge(0, 1);
         let ans = Some(PlanarEmbedding { clockwise_neighbors: 
-            vec![smallvec![3, 4, 2], smallvec![2, 4, 3], smallvec![4, 1, 3, 0], 
-            smallvec![2, 1, 4, 0], smallvec![3, 1, 2, 0], 
-            smallvec![], smallvec![], smallvec![], smallvec![], smallvec![]] });
+            vec![smallvec![4, 3, 2], smallvec![4, 2, 3],
+                smallvec![3, 1, 4, 0], smallvec![4, 1, 2, 0], smallvec![2, 1, 3, 0],
+                smallvec![], smallvec![], smallvec![], smallvec![], smallvec![]] });
         assert_eq!(dmp_embed(&k5_minus), ans);
     }
 
