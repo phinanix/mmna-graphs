@@ -163,6 +163,30 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
     Some(embed)
 }
 
+fn topologize(mut g: GraphAdjMatrix) -> GraphAdjMatrix {
+    // while v is a vertex of degree 1 or 2 
+    while g.vertices().any(|v|
+        match g.degree_of(v) {
+            0|1 => {g.delete_vertex(v); true}, 
+            2 => {g.contract_edge(g.neighbors(v).next().unwrap(), v); true}, 
+            _ => false,
+        }
+    ) {}    
+    g
+}
+
+fn check_planarity(g: &GraphAdjMatrix) -> bool {
+    let topo_g = topologize(*g); 
+    let cut_vertices : VertexVec = 
+        topo_g.vertices().filter(|&v|!topo_g.without_vertex(v).is_connected()).collect();
+    
+    if cut_vertices.len() > 0 {    
+        todo!("recurse on pieces")
+    } else {
+        dmp_embed(&topo_g).is_some()
+    }
+}
+
 #[cfg(test)]
 mod test {
 
@@ -289,7 +313,16 @@ mod test {
     }
 
     #[test]
-    fn split_on_finds_single_edges() {
+    fn topologize_k4_with_stuff() {
+        let k4_with_stuff = k_n(4).with_edge(3, 4)
+                       .with_edge(4, 2) 
+                       .with_edge(0, 5);
+        let ans = topologize(k4_with_stuff).compact_vertices();
+        assert_eq!(ans, k_n(4))
+    }
 
+    #[test]
+    fn compact_one_long_edge() {
+        assert_eq!(k_n(2), GraphAdjMatrix::default().with_edge(0, 3).compact_vertices())
     }
 }

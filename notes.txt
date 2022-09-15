@@ -80,7 +80,9 @@ topologize:
 general planarity checker: 
 1) topologize G 
 2) cut at any cut vertices, producing a list of smaller graphs 
-3) recurse to step 1 on each smaller graph 
+3) if 1 or 2 made any changes, recurse to step 1 on each smaller graph 
+4) if G empty, return True 
+5) call DMP on G 
 
 apex nonplanar checker: 
 1) delete one at a time each vertex of G: 

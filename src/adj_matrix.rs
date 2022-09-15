@@ -79,13 +79,52 @@ impl GraphAdjMatrix {
         new_graph.delete_vertex(u);
         new_graph
     }
+    
+    pub fn contract_edge(&mut self, u: Vertex, v:Vertex) {
+        assert!(self.adj_matrix[u as usize][v as usize]);
+        //u the new vertex 
+        for t in self.neighbors(v) {
+            if t != u {
+                self.add_edge(u, t)
+            }
+        }
+        self.delete_vertex(v)
+    }
 
     pub fn vertices(&self) -> impl Iterator<Item = Vertex> {
         self.vertex_list.into_iter().positions(|x| x).map(|i| i as Vertex)
     }
     
+    pub fn edges(&self) -> impl IntoIterator<Item = (Vertex, Vertex)> {
+        let mut out = vec![];
+        for u in 0..MAX_VS { for v in 0..u {
+            if self.adj_matrix[u][v] {
+                out.push((u as Vertex,v as Vertex))
+            }
+        }
+        }
+        out
+    }
+
     pub fn largest_vertex(&self) -> Vertex {
         self.vertex_list.into_iter().rposition(|x| x).expect("no vertices") as u8
+    }
+
+    pub fn degree_of(&self, v: Vertex) -> usize {
+        self.adj_matrix[v as usize].iter().filter(|&&x|x).count()
+    }
+
+    pub fn compact_vertices(&self) -> Self {
+        let mut vertex_map = [0u8; MAX_VS];
+        
+        for (i,v) in self.vertices().enumerate() {
+            vertex_map[v as usize]= i as u8;
+        }
+        let mut out = GraphAdjMatrix::default();
+        for (u, v) in self.edges() {
+            out.add_edge(vertex_map[u as usize], vertex_map[v as usize])
+        }
+        out
     }
 
     pub fn is_connected(&self) -> bool {
@@ -167,8 +206,8 @@ impl GraphAdjMatrix {
         return path
     }
 
-    pub fn neighbors(&self, v: Vertex) -> impl Iterator<Item=Vertex> + '_ {
-        self.adj_matrix[v as usize].iter().enumerate().filter(|(i,x)|**x).map(|(i,x)|i as Vertex)
+    pub fn neighbors(&self, v: Vertex) -> impl Iterator<Item=Vertex> {
+        self.adj_matrix[v as usize].into_iter().enumerate().filter(|(i,x)|*x).map(|(i,x)|i as Vertex)
     }
 
     pub fn split_on(&self, h: &GraphAdjMatrix) -> impl Iterator<Item=GraphAdjMatrix> {
