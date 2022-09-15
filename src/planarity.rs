@@ -173,7 +173,7 @@ fn topologize(mut g: GraphAdjMatrix) -> GraphAdjMatrix {
     g
 }
 
-fn check_planarity(g: &GraphAdjMatrix) -> bool {
+fn is_planar(g: &GraphAdjMatrix) -> bool {
     let g = topologize(*g); 
     if g.vertices().next().is_none() {return true}
     let cut_vertices : VertexVec = g.vertices().filter(
@@ -182,10 +182,21 @@ fn check_planarity(g: &GraphAdjMatrix) -> bool {
     
     if cut_vertices.len() > 0 {    
         g.split_on(&GraphAdjMatrix::default().with_vertices(cut_vertices))
-         .all(|piece|check_planarity(&piece))
+         .all(|piece|is_planar(&piece))
     } else {
         dmp_embed(&g).is_some()
     }
+}
+
+fn is_apex(g: &GraphAdjMatrix) -> bool {
+    g.vertices().any(|v|is_planar(&g.without_vertex(v)))
+}
+
+fn is_mimsy(g: &GraphAdjMatrix) -> bool {
+    //precondition: g is biconnected, min degree 3
+    !is_apex(g) && 
+    g.edges().into_iter().all(|(u, v)| is_apex(&g.without_edge(u, v))
+       && is_apex(&g.with_contracted_edge(u, v)))
 }
 
 #[cfg(test)]
@@ -218,6 +229,14 @@ mod test {
         assert_eq!(ans, vec![bridge1, bridge2])
     }
 
+    /*
+    note that this test is nondeterministic, it sometimes finds a valid but 
+    different planar embedding. the spooky thing is I don't know why - it 
+    seems to me all the relevant code shoudl be deterministic
+
+    thread 'planarity::test::k_5_minus_embed' panicked at 'assertion failed: `(left == right)`
+  left: `Some(PlanarEmbedding { clockwise_neighbors: [[4, 3, 2], [4, 2, 3], [3, 1, 4, 0], [4, 1, 2, 0], [2, 1, 3, 0], [], [], [], [], []] })`,
+ right: `Some(PlanarEmbedding { clockwise_neighbors: [[3, 4, 2], [2, 4, 3], [4, 1, 3, 0], [2, 1, 4, 0], [3, 1, 2, 0], [], [], [], [], []] })`', src/planarity.rs:239:9 */
     #[test]
     fn k_5_minus_embed() {
         let k5_minus = k_n(5).without_edge(0, 1);
@@ -331,12 +350,12 @@ mod test {
 
     #[test]
     fn k_3_is_planar() {
-        assert!(check_planarity(&k_n(3)))
+        assert!(is_planar(&k_n(3)))
     }
 
     #[test]
     fn k_5_is_not_planar() {
-        assert!(!check_planarity(&k_n(5)))
+        assert!(!is_planar(&k_n(5)))
     }
 
     #[test]
@@ -344,7 +363,7 @@ mod test {
         let hourglass = k_n(3).with_edges(
             &vec![(2,3), (3,4), (2,4)]
         );
-        assert!(check_planarity(&hourglass))
+        assert!(is_planar(&hourglass))
     }
 
     #[test]
@@ -352,7 +371,7 @@ mod test {
         let two_k4 = k_n(4).with_edges(
             &vec![(3,4), (4,5), (5,6), (3,5), (4,6), (3,6)]
         );
-        assert!(check_planarity(&two_k4)) 
+        assert!(is_planar(&two_k4)) 
     }
 
     #[test]
@@ -360,7 +379,7 @@ mod test {
         let k5_k4 = k_n(5).with_edges(
             &vec![(7,4), (4,5), (5,6), (7,5), (4,6), (7,6)]
         );   
-        assert!(!check_planarity(&k5_k4))     
+        assert!(!is_planar(&k5_k4))     
     }
 
 }

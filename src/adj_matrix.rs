@@ -97,6 +97,12 @@ impl GraphAdjMatrix {
         self.delete_vertex(v)
     }
 
+    pub fn with_contracted_edge(&self, u: Vertex, v: Vertex) -> Self {
+        let mut new_graph = self.clone(); 
+        new_graph.contract_edge(u, v);
+        new_graph
+    }
+
     pub fn vertices(&self) -> impl Iterator<Item = Vertex> {
         self.vertex_list.into_iter().positions(|x| x).map(|i| i as Vertex)
     }
