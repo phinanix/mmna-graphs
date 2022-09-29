@@ -1,7 +1,8 @@
 #![allow(unused)] // tests dont seem to count
 
 use std::collections::{HashSet};
-use std::fmt::{Debug, Write};
+use std::{error};
+use std::fmt::{Debug, Display, Write};
 use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
 
@@ -10,6 +11,8 @@ pub const MAX_VS : usize = 10;
 pub type Vertex = u8;
 pub type VertexVec = SmallVec<[Vertex;MAX_VS]>;
 
+// invariants: if v in vertex list is false, all adj_matrix entries are false
+// adj matrix is a symmetric matrix with false on diagonal
 //TODO: should this really be copy?
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct GraphAdjMatrix{
@@ -17,8 +20,76 @@ pub struct GraphAdjMatrix{
     adj_matrix: [[bool; MAX_VS]; MAX_VS]
 }
 
-// invariants: if v in vertex list is false, all adj_matrix entries are false
-// adj matrix is a symmetric matrix with false on diagonal
+//first thing is array which sends a vertex to its place in the new permutation
+//second thing is a smallvec which tells us which elements are being permuted 
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Permutation([Vertex;MAX_VS],VertexVec);
+
+impl Default for Permutation {
+    fn default() -> Self {
+        // [0..MAX_VS]
+        Permutation(core::array::from_fn(|x|x as Vertex), smallvec![])
+    }
+}
+
+impl Permutation {
+    
+    pub fn apply(&self, v: Vertex) -> Vertex {
+        self.0[v as usize]
+    }
+
+    pub fn use_vertex(&mut self, v: Vertex) {
+        if !(self.1.contains(&v)) {
+            self.1.push(v);
+        }
+    }
+    
+    fn swap(mut self, u: Vertex, v: Vertex) -> Self{
+        assert!(u!=v);
+        self.use_vertex(u);
+        self.use_vertex(v);
+        
+        let (new_u, new_v) = (self.0[v as usize], self.0[u as usize]);
+        self.0[u as usize] = new_u;
+        self.0[v as usize] = new_v;
+        self
+    }
+
+    fn decode(mut num: usize, touch: &VertexVec) -> Self {
+        let mut perm_to_be = core::array::from_fn(|x|
+            if touch.contains(&(x as Vertex)) {u8::MAX} else {x as Vertex}
+        );
+        let len_factoral : usize = (1..=touch.len()).product();
+        num = (len_factoral-1).checked_sub(num).expect("num can only be at most factorial");
+        let mut intermediate: VertexVec = smallvec![];
+        for i in (1..=touch.len()) {
+            intermediate.push((num % i) as Vertex);
+            num = num / i;
+        }
+        for (&(mut i), &t) in intermediate.iter().zip(touch).rev() {
+            for &j in touch {
+                if perm_to_be[j as usize] == u8::MAX {
+                    if i == 0 {
+                        perm_to_be[j as usize] = t;
+                        break;
+                    }
+                    else {
+                        i -= 1;
+                    }
+                }
+            }
+        }
+        Permutation(perm_to_be, touch.clone())
+    }
+
+    pub fn iterate_set(touch: &VertexVec) -> impl Iterator<Item = Self> + '_ {
+        let len_factoral = (1..=touch.len()).product();
+        (0..len_factoral).map(|x|Self::decode(x, touch)) 
+    }
+
+
+}
+
 impl GraphAdjMatrix {
     pub fn add_vertex(&mut self, v: Vertex) {
         self.vertex_list[v as usize] = true
@@ -124,6 +195,22 @@ impl GraphAdjMatrix {
 
     pub fn degree_of(&self, v: Vertex) -> usize {
         self.adj_matrix[v as usize].iter().filter(|&&x|x).count()
+    }
+
+    pub fn slow_auto_canon(&self) -> (Vec<Permutation>, Self) {
+        let degrees_of_vs = self.vertices().group_by(|&v|self.degree_of(v));
+        let grouped_vs = degrees_of_vs.into_iter().sorted_by_key(|x|x.0).map(|x|x.1);
+        //let stuff = grouped_vs.map(|grp|)
+
+        todo!()
+    }
+
+    pub fn apply_permutation(&self, p: Permutation) -> Self {
+        let mut out = GraphAdjMatrix::default();
+        for (u, v) in self.edges().into_iter() {
+            out.add_edge(p.apply(u), p.apply(v))
+        }        
+        out
     }
 
     pub fn compact_vertices(&self) -> Self {
@@ -339,7 +426,31 @@ impl Debug for GraphAdjMatrix {
 
 pub mod test {
     use super::*;
-    
+
+    #[test]
+    fn make_perm_zero(){
+        assert_eq!(Permutation::decode(0, &smallvec![]), Permutation::default())
+    }
+
+    #[test]
+    fn make_perm_one(){
+        assert_eq!(Permutation::decode(1, &smallvec![0, 5]), 
+            Permutation::default().swap(0, 5)
+        )
+    }
+
+    #[test]
+    fn six_len_3(){
+        assert_eq!(Permutation::iterate_set(&smallvec![0, 2, 4]).count(), 6)
+    }
+
+    #[test]
+    fn we_didnt_screw_it_up(){
+        let us : HashSet<Vec<_>> = Permutation::iterate_set(&smallvec![0,1,2])
+            .map(|p|p.0[..=2].into()).collect();
+        let them : HashSet<_> = [0,1,2].into_iter().permutations(3).collect();
+        assert_eq!(us, them)
+    }
 
     #[derive(Debug, Default, Clone)]
     pub struct GraphEdgeList(pub Vec<(Vertex, Vertex)>); //edge list
@@ -422,6 +533,13 @@ pub mod test {
         assert!(two_e.is_connected());
         assert!(!two_e.is_biconnected());
     }
+    
+    #[test] 
+    fn canonize_k3_minus() {
+        let k3_minus_the_first = k_n(3).without_edge(0, 1);
+        let k3_m_2 = k_n(3).without_edge(0, 2);
+        assert_eq!(k3_m_2.slow_auto_canon().1, k3_minus_the_first.slow_auto_canon().1)
+    }
 
     #[test]
     fn k_3_two_ways() {
@@ -449,7 +567,7 @@ pub mod test {
             .filter(GraphAdjMatrix::is_biconnected).count())
     }
     #[test]    
-    fn more() {
+    fn enumerate_size_6() {
         assert_eq!(1*3*7*15*31, GraphAdjMatrix::enumerate_all_size(6).count())
     }
     #[test]
