@@ -11,25 +11,25 @@ use crate::adj_matrix::{VertexVec, GraphAdjMatrix, MAX_VS};
 struct BitSet(u64);
 impl BitSet {
     fn new() -> Self { BitSet(0) }
-    fn add(&mut self, n: u8) { self.0 |= 1<<(n as u64) }
-    fn del(&mut self, n: u8) { self.0 &= !(1<<(n as u64)) }
-    fn has(&self, n: u8) -> bool { self.0 & 1<<(n as u64) != 0 }
-    fn len(&self) -> usize { self.0.count_ones() as usize}
-    fn min(&self) -> Option<u8> {
+    fn add(&mut self, n: usize) { self.0 |= 1<<n }
+    fn del(&mut self, n: usize) { self.0 &= !(1<<n) }
+    fn has(&self, n: usize) -> bool { self.0 & 1<<n != 0 }
+    fn len(&self) -> usize { self.0.count_ones() as usize }
+    fn min(&self) -> Option<usize> {
         if self.0 == 0 { return None };
-        Some(self.0.trailing_zeros() as u8)
+        Some(self.0.trailing_zeros() as usize)
     }
-    fn pop_min(&mut self) -> Option<u8> {
+    fn pop_min(&mut self) -> Option<usize> {
         let min = self.min();
         self.del(min?);
         min
     }
 }
-impl Iterator for BitSet { type Item = u8;
-    fn next(&mut self) -> Option<u8> { self.pop_min() }
+impl Iterator for BitSet { type Item = usize;
+    fn next(&mut self) -> Option<usize> { self.pop_min() }
 }
-impl FromIterator<u8> for BitSet {
-    fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
+impl FromIterator<usize> for BitSet {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
         iter.into_iter().fold(Self::new(), |mut x,i|{x.add(i); x})
     }
 }
@@ -51,28 +51,28 @@ impl PlanarEmbedding {
         for (&u,&v) in face.0.iter().zip(face.0[1..].iter().chain(&face.0[..1])) {
             if v == path[0] {
                 //add path[1] to v's clockwise neighbors just before u 
-                let u_index = self.clockwise_neighbors[v as usize].iter()
+                let u_index = self.clockwise_neighbors[v].iter()
                   .position(|&x| x == u).unwrap();
-                self.clockwise_neighbors[v as usize].insert(u_index, path[1]);
+                self.clockwise_neighbors[v].insert(u_index, path[1]);
             }
             else if v == *path.last().unwrap() {
-                let u_index = self.clockwise_neighbors[v as usize].iter()
+                let u_index = self.clockwise_neighbors[v].iter()
                   .position(|&x| x == u).unwrap();
-                self.clockwise_neighbors[v as usize].insert(
+                self.clockwise_neighbors[v].insert(
                     u_index, path[path.len()-2]);
             }        
         }
         //we need a pair of internal vertices, ie length 4
         if path.len() >= 4 {
             for (&u,&v) in path[1..].iter().zip(path[2..(path.len()-1)].iter()) {
-                self.clockwise_neighbors[v as usize].push(u);
-                self.clockwise_neighbors[u as usize].push(v);
+                self.clockwise_neighbors[v].push(u);
+                self.clockwise_neighbors[u].push(v);
             }
         }
         //we need at least 1 internal vertex, ie length 3
         if path.len() >= 3 {
-            self.clockwise_neighbors[path[1] as usize].push(path[0]);
-            self.clockwise_neighbors[path[path.len()-2] as usize].push(path[path.len()-1]);
+            self.clockwise_neighbors[path[1]].push(path[0]);
+            self.clockwise_neighbors[path[path.len()-2]].push(path[path.len()-1]);
         }
     }
 }
@@ -126,8 +126,8 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
             starting_face[1..].iter().chain(&starting_face[..1])
         ) {
             h.add_edge(u, v);
-            embed.clockwise_neighbors[v as usize].push(u);
-            embed.clockwise_neighbors[u as usize].push(v);
+            embed.clockwise_neighbors[v].push(u);
+            embed.clockwise_neighbors[u].push(v);
     }
     let bridges = g.split_on(&h);
     let mut faces = vec![
@@ -138,7 +138,7 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
     ];
     //usize idx into faces
     let mut bridges: Vec<(Bridge, BitSet)> =
-        bridges.into_iter().map(|x|(x,[0u8,1u8].into_iter().collect())).collect();
+        bridges.into_iter().map(|x|(x,[0,1].into_iter().collect())).collect();
     //dbg!(&h,&bridges);
     while !bridges.is_empty() {
         //dbg!(&h, &bridges);
@@ -146,16 +146,16 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
             bridges.iter().enumerate().min_by_key(|(i,(b,v))|v.len()).unwrap();
         //no valid faces = no valid embedding
         let face_idx = valid_faces.min()?;
-        let face = faces[face_idx as usize].clone();
+        let face = faces[face_idx].clone();
         let path: VertexVec = next_bridge.find_path_using(&face.0);
         let next_bridge = next_bridge.clone();
         bridges.remove(idx);
         h.add_path_edges(&path);
         embed.add_path(&path, &face);
         let (face_l, face_r) = face.bisect(&path);
-        faces[face_idx as usize] = face_l.clone();
+        faces[face_idx] = face_l.clone();
         let face_l_idx = face_idx;
-        let face_r_idx = faces.len() as u8;
+        let face_r_idx = faces.len();
         faces.push(face_r.clone());
         let new_faces = [face_idx, face_r_idx];
         fn can_be_embedded(new_face: &Face, face: &Face, bridge: &Bridge) -> bool {
@@ -183,7 +183,7 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
             &path.iter().zip(path[1..].iter()).map(|(&x, &y)| (x, y)).collect());
         let new_bridges = next_bridge.split_on(&path_graph).into_iter().map(
             |bridge| (bridge, new_faces.into_iter().filter(
-                |&f| can_be_embedded(&faces[f as usize], &face, &bridge)
+                |&f| can_be_embedded(&faces[f], &face, &bridge)
             ).collect())
         );
         bridges.extend(new_bridges);
@@ -309,15 +309,15 @@ mod test {
     }
 
     fn random_example() -> (Face, PlanarEmbedding, VertexVec) {
-        let starting_face = smallvec![1,8,3,7,4,2];
+        let starting_face: VertexVec = smallvec![1,8,3,7,4,2];
         let mut embed = PlanarEmbedding{
             clockwise_neighbors: [0; MAX_VS].map(|_|smallvec![]).into()
         };
         for (&u,&v) in starting_face.iter().zip(
                 starting_face[1..].iter().chain(&starting_face[..1])
             ) {
-                embed.clockwise_neighbors[v as usize].push(u);
-                embed.clockwise_neighbors[u as usize].push(v);
+                embed.clockwise_neighbors[v].push(u);
+                embed.clockwise_neighbors[u].push(v);
         }
         let path = smallvec![8,5,6,4];
         (Face(starting_face), embed, path)

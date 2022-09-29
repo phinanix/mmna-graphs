@@ -9,7 +9,7 @@ use smallvec::{smallvec,SmallVec};
 
 pub const MAX_VS : usize = 10;
 
-pub type Vertex = u8;
+pub type Vertex = usize;
 pub type VertexVec = SmallVec<[Vertex;MAX_VS]>;
 
 // invariants: if v in vertex list is false, all adj_matrix entries are false
@@ -29,14 +29,14 @@ pub struct Permutation([Vertex;MAX_VS],VertexVec);
 impl Default for Permutation {
     fn default() -> Self {
         // [0..MAX_VS]
-        Permutation(core::array::from_fn(|x|x as Vertex), smallvec![])
+        Permutation(core::array::from_fn(|x|x), smallvec![])
     }
 }
 
 impl Permutation {
     
     pub fn apply(&self, v: Vertex) -> Vertex {
-        self.0[v as usize]
+        self.0[v]
     }
 
     pub fn use_vertex(&mut self, v: Vertex) {
@@ -50,28 +50,28 @@ impl Permutation {
         self.use_vertex(u);
         self.use_vertex(v);
         
-        let (new_u, new_v) = (self.0[v as usize], self.0[u as usize]);
-        self.0[u as usize] = new_u;
-        self.0[v as usize] = new_v;
+        let (new_u, new_v) = (self.0[v], self.0[u]);
+        self.0[u] = new_u;
+        self.0[v] = new_v;
         self
     }
 
     fn decode(mut num: usize, touch: &VertexVec) -> Self {
         let mut perm_to_be = core::array::from_fn(|x|
-            if touch.contains(&(x as Vertex)) {u8::MAX} else {x as Vertex}
+            if touch.contains(&(x)) {usize::MAX} else {x}
         );
         let len_factoral : usize = (1..=touch.len()).product();
         num = (len_factoral-1).checked_sub(num).expect("num can only be at most factorial");
         let mut intermediate: VertexVec = smallvec![];
         for i in (1..=touch.len()) {
-            intermediate.push((num % i) as Vertex);
+            intermediate.push((num % i));
             num = num / i;
         }
         for (&(mut i), &t) in intermediate.iter().zip(touch).rev() {
             for &j in touch {
-                if perm_to_be[j as usize] == u8::MAX {
+                if perm_to_be[j] == usize::MAX {
                     if i == 0 {
-                        perm_to_be[j as usize] = t;
+                        perm_to_be[j] = t;
                         break;
                     }
                     else {
@@ -124,7 +124,7 @@ impl Permutation {
 
 impl GraphAdjMatrix {
     pub fn add_vertex(&mut self, v: Vertex) {
-        self.vertex_list[v as usize] = true
+        self.vertex_list[v] = true
     }
 
     pub fn with_vertex(mut self, v: Vertex) -> Self{
@@ -141,14 +141,14 @@ impl GraphAdjMatrix {
 
     pub fn add_edge(&mut self, u: Vertex, v: Vertex) {
 
-        //assert!(g.vertex_list[u as usize] && g.vertex_list[v as usize]);
+        //assert!(g.vertex_list[u] && g.vertex_list[v]);
         assert!(u != v);
         
-        self.vertex_list[u as usize] = true; 
-        self.vertex_list[v as usize] = true;
+        self.vertex_list[u] = true; 
+        self.vertex_list[v] = true;
         
-        self.adj_matrix[u as usize][v as usize] = true;
-        self.adj_matrix[v as usize][u as usize] = true;
+        self.adj_matrix[u][v] = true;
+        self.adj_matrix[v][u] = true;
     }
 
     pub fn with_edge(mut self, u: Vertex, v: Vertex) -> GraphAdjMatrix {
@@ -164,8 +164,8 @@ impl GraphAdjMatrix {
     }
 
     pub fn delete_edge(&mut self, u: Vertex, v: Vertex) {
-        self.adj_matrix[u as usize][v as usize] = false;
-        self.adj_matrix[v as usize][u as usize] = false;
+        self.adj_matrix[u][v] = false;
+        self.adj_matrix[v][u] = false;
     }
 
     pub fn without_edge(mut self, u: Vertex, v: Vertex) -> GraphAdjMatrix {
@@ -174,12 +174,12 @@ impl GraphAdjMatrix {
     }
 
     pub fn delete_vertex(&mut self, u: Vertex) {
-        assert!(self.vertex_list[u as usize]);
+        assert!(self.vertex_list[u]);
 
-        self.vertex_list[u as usize] = false;
-        self.adj_matrix[u as usize] = [false;MAX_VS];
+        self.vertex_list[u] = false;
+        self.adj_matrix[u] = [false;MAX_VS];
         for row in &mut self.adj_matrix{
-            row[u as usize] = false;
+            row[u] = false;
         }
     }
 
@@ -190,7 +190,7 @@ impl GraphAdjMatrix {
     }
     
     pub fn contract_edge(&mut self, u: Vertex, v:Vertex) {
-        assert!(self.adj_matrix[u as usize][v as usize]);
+        assert!(self.adj_matrix[u][v]);
         //u the new vertex 
         for t in self.neighbors(v) {
             if t != u {
@@ -207,14 +207,14 @@ impl GraphAdjMatrix {
     }
 
     pub fn vertices(&self) -> impl Iterator<Item = Vertex> {
-        self.vertex_list.into_iter().positions(|x| x).map(|i| i as Vertex)
+        self.vertex_list.into_iter().positions(|x| x).map(|i| i)
     }
     
     pub fn edges(&self) -> impl IntoIterator<Item = (Vertex, Vertex)> {
         let mut out = vec![];
         for u in 0..MAX_VS { for v in 0..u {
             if self.adj_matrix[u][v] {
-                out.push((u as Vertex,v as Vertex))
+                out.push((u,v))
             }
         }
         }
@@ -222,11 +222,11 @@ impl GraphAdjMatrix {
     }
 
     pub fn largest_vertex(&self) -> Vertex {
-        self.vertex_list.into_iter().rposition(|x| x).expect("no vertices") as u8
+        self.vertex_list.into_iter().rposition(|x| x).expect("no vertices")
     }
 
     pub fn degree_of(&self, v: Vertex) -> usize {
-        self.adj_matrix[v as usize].iter().filter(|&&x|x).count()
+        self.adj_matrix[v].iter().filter(|&&x|x).count()
     }
 
     pub fn slow_auto_canon(&self) -> (Vec<Permutation>, Self) {
@@ -251,14 +251,14 @@ impl GraphAdjMatrix {
     }
 
     pub fn compact_vertices(&self) -> Self {
-        let mut vertex_map = [0u8; MAX_VS];
+        let mut vertex_map = [0; MAX_VS];
         
         for (i,v) in self.vertices().enumerate() {
-            vertex_map[v as usize]= i as u8;
+            vertex_map[v]= i;
         }
         let mut out = GraphAdjMatrix::default();
         for (u, v) in self.edges() {
-            out.add_edge(vertex_map[u as usize], vertex_map[v as usize])
+            out.add_edge(vertex_map[u], vertex_map[v])
         }
         out
     }
@@ -268,7 +268,7 @@ impl GraphAdjMatrix {
         //invariant: todo intersect visited is empty 
         let mut visited = [false; MAX_VS];
         let mut todo = [false; MAX_VS];
-        todo[first_v as usize] = true;
+        todo[first_v] = true;
     
         while let Some(cur_v) = todo.into_iter().position(|x| x) {
             todo[cur_v] = false;
@@ -343,12 +343,12 @@ impl GraphAdjMatrix {
     }
 
     pub fn neighbors(&self, v: Vertex) -> impl Iterator<Item=Vertex> {
-        self.adj_matrix[v as usize].into_iter().enumerate().filter(|(i,x)|*x).map(|(i,x)|i as Vertex)
+        self.adj_matrix[v].into_iter().enumerate().filter(|(i,x)|*x).map(|(i,x)|i)
     }
 
     pub fn split_on(&self, h: &GraphAdjMatrix) -> impl Iterator<Item=GraphAdjMatrix> {
         let h_vertex_list: [bool; MAX_VS] = h.vertex_list;
-            //h.iter().fold([false; MAX_VS], |mut acc,i|{acc[*i as usize] = true; acc});
+            //h.iter().fold([false; MAX_VS], |mut acc,i|{acc[*i] = true; acc});
         let mut starts: SmallVec<[bool; MAX_VS]> =
             self.vertex_list.iter().zip(h_vertex_list).map(|(&sv,hv)|sv&!hv).collect();
         let mut bridges = vec![];
@@ -356,7 +356,7 @@ impl GraphAdjMatrix {
             //invariant: todo intersect visited is empty 
             let mut visited = [false; MAX_VS];
             let mut todo = [false; MAX_VS];
-            todo[cur_v as usize] = true;
+            todo[cur_v] = true;
         
             let mut fragment = GraphAdjMatrix::default();
             while let Some(cur_v) = todo.into_iter().position(|x| x) {
@@ -365,7 +365,7 @@ impl GraphAdjMatrix {
                 starts[cur_v] = false; 
                 for (v, adj) in self.adj_matrix[cur_v].into_iter().enumerate() {
                     if adj {
-                        fragment.add_edge(cur_v as Vertex,v as Vertex);
+                        fragment.add_edge(cur_v,v);
                         if !visited[v] && !h_vertex_list[v] { 
                             todo[v] = true
                         }
@@ -378,8 +378,8 @@ impl GraphAdjMatrix {
         //above obtains all bridges with at least 1 vertex not in h. 
         //now we need to obtain all the bridges which are exactly 1 edge between 2 vertices of h.
         for v in h.vertices() { for u in h.vertices() {
-            if v < u && self.adj_matrix[u as usize][v as usize] 
-                && ! (h.adj_matrix[u as usize][v as usize]) {
+            if v < u && self.adj_matrix[u][v] 
+                && ! (h.adj_matrix[u][v]) {
                     bridges.push(GraphAdjMatrix::default().with_edge(u, v))
             }
         }}
@@ -392,20 +392,20 @@ impl GraphAdjMatrix {
         //invariant: todo intersect visited is empty 
         let mut visited_from: [Option<Vertex>; MAX_VS] = [None; MAX_VS];
         let mut todo: [Option<Vertex>; MAX_VS] = [None; MAX_VS];
-        todo[first_v as usize] = Some(first_v);
+        todo[first_v] = Some(first_v);
 
         while let Some(cur_v) = todo.into_iter().position(|x|x.is_some()) {
             visited_from[cur_v] = todo[cur_v]; 
             todo[cur_v] = None;
             for (v, adj) in self.adj_matrix[cur_v].into_iter().enumerate() {
                 if adj && visited_from[v].is_none() && todo[v].is_none() { 
-                    todo[v] = Some(cur_v as Vertex);
-                    if face.contains(&(v as Vertex)) {
-                        let mut path = smallvec![v as Vertex];
-                        let mut tail = cur_v as Vertex;
+                    todo[v] = Some(cur_v);
+                    if face.contains(&(v)) {
+                        let mut path = smallvec![v];
+                        let mut tail = cur_v;
                         while tail != first_v {
                             path.push(tail);
-                            tail = visited_from[tail as usize].unwrap();
+                            tail = visited_from[tail].unwrap();
                         }
                         path.push(first_v);
                         return path
@@ -431,7 +431,7 @@ impl From<&[u64]> for GraphAdjMatrix {
         for x in 0..num_vs {
             for y in 0..x {
                 if (rows[x] >> y) & 1 != 0 {
-                    out.add_edge(x as u8, y as u8);
+                    out.add_edge(x, y);
                 }
             }
         }
