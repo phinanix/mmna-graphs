@@ -33,6 +33,36 @@ impl Default for Permutation {
     }
 }
 
+
+mod perm_iter {
+    use dyn_clonable::{clonable, dyn_clone::DynClone};
+    use super::Permutation;
+    
+    pub trait DynBox {
+        type Item;
+        type Output: Iterator<Item=Self::Item> + Clone;
+        fn dyn_box(self)-> Self::Output;
+    }
+    impl<T> DynBox for T where T: Iterator<Item = Permutation> + Clone + 'static {
+        type Item = Permutation;
+        type Output = PermIter;
+        fn dyn_box(self)-> PermIter { PermIter(Box::new(self)) }
+    }
+    #[derive(Clone)]
+    pub struct PermIter(Box<dyn PermutationIteratorClonable>);
+    impl Iterator for PermIter {
+        type Item = Permutation;
+        fn next(&mut self) -> Option<Permutation> {
+            self.0.next()
+        }
+    }
+
+    #[clonable]
+    trait PermutationIteratorClonable: Iterator<Item = Permutation> + Clone {}
+    impl<T> PermutationIteratorClonable for T where T: Iterator<Item = Permutation> + Clone {}
+    
+}
+
 impl Permutation {
     
     pub fn apply(&self, v: Vertex) -> Vertex {
@@ -94,33 +124,6 @@ impl Permutation {
 
 
 }
-
-// trait X {
-//     fn next(&mut self) -> Option<Permutation>;
-//     fn dup(&self) -> Self;
-// }
-// impl<T> X for T where T: Iterator<Item = Permutation> + Clone {
-
-// }
-// struct PermIter(Box<dyn X>);
-// impl PermIter<dyn X> {
-//     fn new(x: &(impl Iterator<Item = Permutation> + Clone)) -> Self {
-//         Self(Box::new(x.clone()))
-//     }
-// }
-// impl Iterator for PermIter<_> {}
-// impl<T> Iterator for PermIter<T> where T: ?Sized + Iterator<Item = Permutation>{
-//     type Item = Permutation;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.0.next()
-//     }
-// }
-// impl<T: Clone + Iterator<Item = Permutation>> Clone for PermIter<T> {
-//     fn clone(&self) -> Self {
-//         Self(self.0.clone())
-//     }
-// }
 
 impl GraphAdjMatrix {
     pub fn add_vertex(&mut self, v: Vertex) {
@@ -230,13 +233,14 @@ impl GraphAdjMatrix {
     }
 
     pub fn slow_auto_canon(&self) -> (Vec<Permutation>, Self) {
+        use perm_iter::{DynBox};
         let degrees_of_vs = self.vertices().group_by(|&v|self.degree_of(v));
         let grouped_vs = degrees_of_vs.into_iter().sorted_by_key(|x|x.0).map(|x|x.1);
-        let stuff = grouped_vs.map(|grp| -> Vec<Permutation> {
-            Permutation::iterate_set(grp.collect()).collect()
+        let stuff = grouped_vs.map(|grp| { // -> impl Iterator<Item = Permutation> + Clone
+            Permutation::iterate_set(grp.collect()).dyn_box()
         });
         let stuff2  = stuff.reduce(
-            |ps,qs| ps.iter().cartesian_product(qs).map(|(p,q)| p.compose(&q)).collect()
+            |ps,qs| ps.cartesian_product(qs).map(|(p,q)| p.compose(&q)).dyn_box()
         );
 
         todo!()
