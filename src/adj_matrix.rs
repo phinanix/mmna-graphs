@@ -1,5 +1,6 @@
 #![allow(unused)] // tests dont seem to count
 
+use std::collections::binary_heap::Iter;
 use std::collections::{HashSet};
 use std::{error};
 use std::fmt::{Debug, Display, Write};
@@ -82,13 +83,44 @@ impl Permutation {
         Permutation(perm_to_be, touch.clone())
     }
 
-    pub fn iterate_set(touch: &VertexVec) -> impl Iterator<Item = Self> + '_ {
+    pub fn iterate_set(touch: VertexVec) -> impl Iterator<Item = Self> + Clone {
         let len_factoral = (1..=touch.len()).product();
-        (0..len_factoral).map(|x|Self::decode(x, touch)) 
+        (0..len_factoral).map(move |x|Self::decode(x, &touch)) 
+    }
+
+    fn compose(&self, q: &Self) -> Self {
+        todo!()
     }
 
 
 }
+
+// trait X {
+//     fn next(&mut self) -> Option<Permutation>;
+//     fn dup(&self) -> Self;
+// }
+// impl<T> X for T where T: Iterator<Item = Permutation> + Clone {
+
+// }
+// struct PermIter(Box<dyn X>);
+// impl PermIter<dyn X> {
+//     fn new(x: &(impl Iterator<Item = Permutation> + Clone)) -> Self {
+//         Self(Box::new(x.clone()))
+//     }
+// }
+// impl Iterator for PermIter<_> {}
+// impl<T> Iterator for PermIter<T> where T: ?Sized + Iterator<Item = Permutation>{
+//     type Item = Permutation;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.0.next()
+//     }
+// }
+// impl<T: Clone + Iterator<Item = Permutation>> Clone for PermIter<T> {
+//     fn clone(&self) -> Self {
+//         Self(self.0.clone())
+//     }
+// }
 
 impl GraphAdjMatrix {
     pub fn add_vertex(&mut self, v: Vertex) {
@@ -200,7 +232,12 @@ impl GraphAdjMatrix {
     pub fn slow_auto_canon(&self) -> (Vec<Permutation>, Self) {
         let degrees_of_vs = self.vertices().group_by(|&v|self.degree_of(v));
         let grouped_vs = degrees_of_vs.into_iter().sorted_by_key(|x|x.0).map(|x|x.1);
-        //let stuff = grouped_vs.map(|grp|)
+        let stuff = grouped_vs.map(|grp| -> Vec<Permutation> {
+            Permutation::iterate_set(grp.collect()).collect()
+        });
+        let stuff2  = stuff.reduce(
+            |ps,qs| ps.iter().cartesian_product(qs).map(|(p,q)| p.compose(&q)).collect()
+        );
 
         todo!()
     }
@@ -441,12 +478,12 @@ pub mod test {
 
     #[test]
     fn six_len_3(){
-        assert_eq!(Permutation::iterate_set(&smallvec![0, 2, 4]).count(), 6)
+        assert_eq!(Permutation::iterate_set(smallvec![0, 2, 4]).count(), 6)
     }
 
     #[test]
     fn we_didnt_screw_it_up(){
-        let us : HashSet<Vec<_>> = Permutation::iterate_set(&smallvec![0,1,2])
+        let us : HashSet<Vec<_>> = Permutation::iterate_set(smallvec![0,1,2])
             .map(|p|p.0[..=2].into()).collect();
         let them : HashSet<_> = [0,1,2].into_iter().permutations(3).collect();
         assert_eq!(us, them)
