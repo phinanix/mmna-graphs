@@ -27,43 +27,13 @@ pub struct GraphAdjMatrix{
 //first thing is array which sends a vertex to its place in the new permutation
 //second thing is a smallvec which tells us which elements are being permuted 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Permutation([Vertex;MAX_VS],VertexVec);
+pub struct Permutation(pub [Vertex;MAX_VS],pub VertexVec);
 
 impl Default for Permutation {
     fn default() -> Self {
         // [0..MAX_VS]
         Permutation(core::array::from_fn(|x|x as Vertex), smallvec![])
     }
-}
-
-
-mod perm_iter {
-    use dyn_clonable::{clonable, dyn_clone::DynClone};
-    use super::Permutation;
-    
-    pub trait DynBox {
-        type Item;
-        type Output: Iterator<Item=Self::Item> + Clone;
-        fn dyn_box(self)-> Self::Output;
-    }
-    impl<T> DynBox for T where T: Iterator<Item = Permutation> + Clone + 'static {
-        type Item = Permutation;
-        type Output = PermIter;
-        fn dyn_box(self)-> PermIter { PermIter(Box::new(self)) }
-    }
-    #[derive(Clone)]
-    pub struct PermIter(Box<dyn PermutationIteratorClonable>);
-    impl Iterator for PermIter {
-        type Item = Permutation;
-        fn next(&mut self) -> Option<Permutation> {
-            self.0.next()
-        }
-    }
-
-    #[clonable]
-    trait PermutationIteratorClonable: Iterator<Item = Permutation> + Clone {}
-    impl<T> PermutationIteratorClonable for T where T: Iterator<Item = Permutation> + Clone {}
-    
 }
 
 impl Permutation {
@@ -78,7 +48,7 @@ impl Permutation {
         }
     }
     
-    fn swap(mut self, u: Vertex, v: Vertex) -> Self{
+    pub fn swap(mut self, u: Vertex, v: Vertex) -> Self{
         assert!(u!=v);
         self.use_vertex(u);
         self.use_vertex(v);
@@ -121,7 +91,7 @@ impl Permutation {
         (0..len_factoral).map(move |x|Self::decode(x, &touch)) 
     }
 
-    fn compose(&self, q: &Self) -> Self {
+    pub fn compose(&self, q: &Self) -> Self {
        let permuation = self.0.map(|i|q.0[i as usize]);
        let used = itertools::chain(&self.1,&q.1).copied().unique().collect();
        Permutation(permuation, used)
@@ -244,41 +214,6 @@ impl GraphAdjMatrix {
 
     pub fn degree_of(&self, v: Vertex) -> usize {
         self.adj_matrix[v as usize].iter().filter(|&&x|x).count()
-    }
-
-    pub fn slow_auto_canon(&self) -> (Vec<Permutation>, Self) {
-        use perm_iter::{DynBox};
-        let vs_by_degree: Vec<Vertex> = self.vertices().sorted_by_key(|&v|self.degree_of(v)).collect();
-        let mut degree_permutation = Permutation::default();
-        
-        for (u, v) in self.vertices().zip(vs_by_degree) {
-          degree_permutation.use_vertex(u);
-          degree_permutation.0[v as usize] = u;
-        }
-        let degree_canon = self.apply_permutation(&degree_permutation); 
-        let grouped_vs = degree_canon.vertices().group_by(|&v|degree_canon.degree_of(v));
-        let group_perms = grouped_vs.into_iter().map(|(_, grp)| { // -> impl Iterator<Item = Permutation> + Clone
-            Permutation::iterate_set(grp.collect()).dyn_box()
-        });
-        let all_perms  = group_perms.reduce(
-            |ps,qs| ps.cartesian_product(qs).map(|(p,q)| p.compose(&q)).dyn_box()
-        ).expect("Expected at least 1 vertex");
-        //dbg!(all_perms.collect::<Vec<_>>());
-        
-        //let min_self = all_perms.map(|p|GraphSize(self.apply_permutation(p))).min()
-        let mut automorphisms = vec![];
-        let mut min_self = degree_canon.clone();
-        for perm in all_perms {
-          let candidate = degree_canon.apply_permutation(&perm);
-          candidate.partial_cmp(&min_self).expect("Vertex list");
-          if candidate < min_self {
-            min_self = candidate;
-            automorphisms = vec![perm];
-          }
-          else if candidate == min_self { automorphisms.push(perm)}
-        }
-        let automorphisms = automorphisms.iter().map(|a|automorphisms[0].inverse().compose(a)).collect();
-        (automorphisms,min_self)
     }
 
     pub fn apply_permutation(&self, p: &Permutation) -> Self {
@@ -506,7 +441,7 @@ impl PartialOrd for GraphAdjMatrix {
     }
 }
 pub mod test {
-    use super::*;
+  use super::*;
 
     #[test]
     fn make_perm_zero(){
@@ -614,46 +549,6 @@ pub mod test {
         assert!(two_e.is_connected());
         assert!(!two_e.is_biconnected());
     }
-    
-    #[test] 
-    fn canonize_k3_minus() {
-        let k3_minus_the_first = k_n(3).without_edge(0, 1);
-        let k3_m_2 = k_n(3).without_edge(0, 2);
-        assert_eq!(k3_m_2.slow_auto_canon().1, k3_minus_the_first.slow_auto_canon().1)
-    }
-
-    #[test] 
-    fn c4_automorphism() { 
-      let c4 = k_n(4).without_edge(0, 2).without_edge(1, 3); 
-      let (autos, canon) = c4.slow_auto_canon();
-      assert_eq!(autos.len(),8);
-      assert!(autos.iter().duplicates().next() == None);
-      assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
-    }
-
-    #[test] 
-    fn p4_automorphism() { 
-      let p4 = k_n(2).with_edges(&vec![(1,2), (2,3)]);
-      let (autos, canon) = p4.slow_auto_canon();
-      let mut id_4 = Permutation::default(); 
-      id_4.1 = smallvec![0,1,2,3];
-      let swapped = id_4.clone().swap(0, 1).swap(2, 3);
-      assert_eq!(autos, vec![id_4, swapped]);
-      assert!(autos.iter().duplicates().next() == None);
-      assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
-    }
-
-    #[test]
-    fn nuclear_auto_canon() {
-      //three triangles sharing a central vertex
-      let bowtie = k_n(3).with_edges(
-        &vec![(0,3), (0,4), (3, 4), (0, 5), (0, 6), (5, 6)]);
-      let (autos, canon) = bowtie.slow_auto_canon();
-      assert_eq!(autos.len(),6*4*2);
-      assert!(autos.iter().duplicates().next() == None);
-      assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
-    }
-
 
     #[test]
     fn k_3_two_ways() {

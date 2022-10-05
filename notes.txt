@@ -52,15 +52,14 @@ so you could for instance enumerate all apex graphs and then try adding all
 single edges to them, though whether there is some better way to do this is unclear
 
 Todo List 14 Sep (updated 5 Oct)
-- isomorphism tester (dumb, via all perms)
 - isomorphism tester (fast, via cyclic ordering)
 - enumerate all non-isomorphic mimsy candidates 
-  - enumer planar triangulations
+  - enum planar triangulations
   - enum planar graphs 
   - enum apex graphs 
   - enum candidates 
 
-- enumerate mimsy graphs to 7 or 8 vertices with redunancy 
+- enumerate mimsy graphs to 7 or 8 vertices with redundancy 
 - generate random graphs 
 - check invariants of random graphs 
   - nonplanar if e > 3v-6
