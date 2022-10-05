@@ -1,6 +1,5 @@
 #![allow(unused)] // tests dont seem to count
 
-use std::collections::{HashSet};
 use std::fmt::{self, Debug};
 use itertools::Itertools;
 use smallvec::{smallvec};
@@ -8,18 +7,18 @@ use smallvec::{smallvec};
 use crate::adj_matrix::{VertexVec, GraphAdjMatrix, MAX_VS};
 
 #[derive(Clone, Copy)]
-struct BitSet(u64);
+pub struct BitSet(u64);
 impl BitSet {
-    fn new() -> Self { BitSet(0) }
-    fn add(&mut self, n: u8) { self.0 |= 1<<(n as u64) }
-    fn del(&mut self, n: u8) { self.0 &= !(1<<(n as u64)) }
-    fn has(&self, n: u8) -> bool { self.0 & 1<<(n as u64) != 0 }
-    fn len(&self) -> usize { self.0.count_ones() as usize}
-    fn min(&self) -> Option<u8> {
+    pub fn new() -> Self { BitSet(0) }
+    pub fn add(&mut self, n: u8) { self.0 |= 1<<(n as u64) }
+    pub fn del(&mut self, n: u8) { self.0 &= !(1<<(n as u64)) }
+    pub fn has(&self, n: u8) -> bool { self.0 & 1<<(n as u64) != 0 }
+    pub fn len(&self) -> usize { self.0.count_ones() as usize}
+    pub fn min(&self) -> Option<u8> {
         if self.0 == 0 { return None };
         Some(self.0.trailing_zeros() as u8)
     }
-    fn pop_min(&mut self) -> Option<u8> {
+    pub fn pop_min(&mut self) -> Option<u8> {
         let min = self.min();
         self.del(min?);
         min

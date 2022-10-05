@@ -51,10 +51,7 @@ it has to be such that deleting any single edge leaves an apex graph
 so you could for instance enumerate all apex graphs and then try adding all 
 single edges to them, though whether there is some better way to do this is unclear
 
-Todo List 14 Sep 
-- general graph planarity checker 
-- apex checker 
-- mimsy checker 
+Todo List 14 Sep (updated 5 Oct)
 - isomorphism tester (dumb, via all perms)
 - isomorphism tester (fast, via cyclic ordering)
 - enumerate all non-isomorphic mimsy candidates 
@@ -63,6 +60,7 @@ Todo List 14 Sep
   - enum apex graphs 
   - enum candidates 
 
+- enumerate mimsy graphs to 7 or 8 vertices with redunancy 
 - generate random graphs 
 - check invariants of random graphs 
   - nonplanar if e > 3v-6
@@ -71,6 +69,8 @@ Todo List 14 Sep
 - replace [bool] with bitvec 
 - factor out "graphs" versus "planarity" files
 - performance optimization 
+
+
 
 Pseudocode for above 
 topologize: 

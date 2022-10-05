@@ -7,6 +7,8 @@ use std::fmt::{Debug, Display, Write};
 use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
 
+use crate::planarity::BitSet;
+
 pub const MAX_VS : usize = 10;
 
 pub type Vertex = u8;
@@ -119,7 +121,9 @@ impl Permutation {
     }
 
     fn compose(&self, q: &Self) -> Self {
-        todo!()
+       let permuation = self.0.map(|i|q.0[i as usize]);
+       let used = itertools::chain(&self.1,&q.1).copied().unique().collect();
+       Permutation(permuation, used)
     }
 
 
@@ -234,15 +238,16 @@ impl GraphAdjMatrix {
 
     pub fn slow_auto_canon(&self) -> (Vec<Permutation>, Self) {
         use perm_iter::{DynBox};
-        let degrees_of_vs = self.vertices().group_by(|&v|self.degree_of(v));
+        let degrees_of_vs = self.vertices().sorted_by_key(|&v|self.degree_of(v)).group_by(|&v|self.degree_of(v));
         let grouped_vs = degrees_of_vs.into_iter().sorted_by_key(|x|x.0).map(|x|x.1);
-        let stuff = grouped_vs.map(|grp| { // -> impl Iterator<Item = Permutation> + Clone
+        let group_perms = grouped_vs.map(|grp| { // -> impl Iterator<Item = Permutation> + Clone
             Permutation::iterate_set(grp.collect()).dyn_box()
         });
-        let stuff2  = stuff.reduce(
+        let all_perms  = group_perms.reduce(
             |ps,qs| ps.cartesian_product(qs).map(|(p,q)| p.compose(&q)).dyn_box()
-        );
+        ).unwrap(); //_or_else(||[Default::default()].into_iter().dyn_box());
 
+        dbg!(all_perms.collect::<Vec<_>>());
         todo!()
     }
 
@@ -331,9 +336,9 @@ impl GraphAdjMatrix {
         let mut path = smallvec![self.largest_vertex()];
         path.push(self.neighbors(path[0]).next().unwrap());
         let mut prev = path[0];
-        let mut seen: HashSet<Vertex> = [prev].into_iter().collect(); //TODO bitset
-        while !seen.contains(path.last().unwrap()) {
-            seen.insert(*path.last().unwrap());
+        let mut seen: BitSet = [prev].into_iter().collect();
+        while !seen.has(*path.last().unwrap()) {
+            seen.add(*path.last().unwrap());
             let next = self.neighbors(*path.last().unwrap()).filter(|&x|x!=prev).next()
                        .expect("unexpected degree 1 vertex in 'biconnected' graph");
             prev = *path.last().unwrap();
