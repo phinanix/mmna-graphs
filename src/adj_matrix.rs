@@ -2,6 +2,7 @@
 
 use std::collections::binary_heap::Iter;
 use std::collections::{HashSet};
+use std::fs::Permissions;
 use std::{error};
 use std::fmt::{Debug, Display, Write};
 use itertools::Itertools;
@@ -238,20 +239,40 @@ impl GraphAdjMatrix {
 
     pub fn slow_auto_canon(&self) -> (Vec<Permutation>, Self) {
         use perm_iter::{DynBox};
-        let degrees_of_vs = self.vertices().sorted_by_key(|&v|self.degree_of(v)).group_by(|&v|self.degree_of(v));
-        let grouped_vs = degrees_of_vs.into_iter().sorted_by_key(|x|x.0).map(|x|x.1);
-        let group_perms = grouped_vs.map(|grp| { // -> impl Iterator<Item = Permutation> + Clone
+        let vs_by_degree: Vec<Vertex> = self.vertices().sorted_by_key(|&v|self.degree_of(v)).collect();
+        let mut degree_permutation = Permutation::default();
+        for (u, v) in self.vertices().zip(vs_by_degree) {
+          degree_permutation.use_vertex(u);
+          degree_permutation.0[u as usize] = v;
+        }
+
+        let degree_canon = self.apply_permutation(&degree_permutation); 
+
+        let grouped_vs = degree_canon.vertices().group_by(|&v|degree_canon.degree_of(v));
+        let group_perms = grouped_vs.into_iter().map(|(_, grp)| { // -> impl Iterator<Item = Permutation> + Clone
             Permutation::iterate_set(grp.collect()).dyn_box()
         });
         let all_perms  = group_perms.reduce(
             |ps,qs| ps.cartesian_product(qs).map(|(p,q)| p.compose(&q)).dyn_box()
-        ).unwrap(); //_or_else(||[Default::default()].into_iter().dyn_box());
-
-        dbg!(all_perms.collect::<Vec<_>>());
-        todo!()
+        ).expect("Expected at least 1 vertex");
+        //dbg!(all_perms.collect::<Vec<_>>());
+        
+        //let min_self = all_perms.map(|p|GraphSize(self.apply_permutation(p))).min()
+        let mut automorphims = vec![];
+        let mut min_self = degree_canon.clone();
+        for perm in all_perms {
+          let candidate = degree_canon.apply_permutation(&perm);
+          candidate.partial_cmp(&min_self).expect("Vertex list");
+          if candidate < min_self {
+            min_self = candidate;
+            automorphims = vec![perm];
+          }
+          else if candidate == min_self { automorphims.push(perm)}
+        }
+        (automorphims,min_self)
     }
 
-    pub fn apply_permutation(&self, p: Permutation) -> Self {
+    pub fn apply_permutation(&self, p: &Permutation) -> Self {
         let mut out = GraphAdjMatrix::default();
         for (u, v) in self.edges().into_iter() {
             out.add_edge(p.apply(u), p.apply(v))
@@ -469,7 +490,12 @@ impl Debug for GraphAdjMatrix {
     }
 }
 
-
+impl PartialOrd for GraphAdjMatrix {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+      if self.vertex_list != other.vertex_list { return None }
+      self.adj_matrix.partial_cmp(&other.adj_matrix)
+    }
+}
 pub mod test {
     use super::*;
 
@@ -584,8 +610,17 @@ pub mod test {
     fn canonize_k3_minus() {
         let k3_minus_the_first = k_n(3).without_edge(0, 1);
         let k3_m_2 = k_n(3).without_edge(0, 2);
-        //TODO: assert_eq!(k3_m_2.slow_auto_canon().1, k3_minus_the_first.slow_auto_canon().1)
+        assert_eq!(k3_m_2.slow_auto_canon().1, k3_minus_the_first.slow_auto_canon().1)
     }
+
+    // #[test] 
+    // fn k5_minus_automorphism() { 
+    //   let c4 = k_n(4).without_edge(0, 2).without_edge(1, 3); 
+    //   let (autos, canon) = c4.slow_auto_canon();
+    //   assert!(autos.len()==2);
+    //   assert!(autos.iter().duplicates().next() == None);
+    //   assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
+    // }
 
     #[test]
     fn k_3_two_ways() {
