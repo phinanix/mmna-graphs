@@ -643,6 +643,17 @@ pub mod test {
       assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
     }
 
+    #[test]
+    fn nuclear_auto_canon() {
+      //three triangles sharing a central vertex
+      let bowtie = k_n(3).with_edges(
+        &vec![(0,3), (0,4), (3, 4), (0, 5), (0, 6), (5, 6)]);
+      let (autos, canon) = bowtie.slow_auto_canon();
+      assert_eq!(autos.len(),6*4*2);
+      assert!(autos.iter().duplicates().next() == None);
+      assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
+    }
+
 
     #[test]
     fn k_3_two_ways() {
