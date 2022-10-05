@@ -127,6 +127,15 @@ impl Permutation {
        Permutation(permuation, used)
     }
 
+    pub fn inverse(&self) -> Self {
+        let mut new_permuation = Permutation::default();
+        new_permuation.1 = self.1.clone();
+        for &v in &self.1 {
+          new_permuation.0[self.0[v as usize] as usize] = v;
+        }
+        new_permuation
+    }
+
 
 }
 
@@ -241,13 +250,12 @@ impl GraphAdjMatrix {
         use perm_iter::{DynBox};
         let vs_by_degree: Vec<Vertex> = self.vertices().sorted_by_key(|&v|self.degree_of(v)).collect();
         let mut degree_permutation = Permutation::default();
+        
         for (u, v) in self.vertices().zip(vs_by_degree) {
           degree_permutation.use_vertex(u);
-          degree_permutation.0[u as usize] = v;
+          degree_permutation.0[v as usize] = u;
         }
-
         let degree_canon = self.apply_permutation(&degree_permutation); 
-
         let grouped_vs = degree_canon.vertices().group_by(|&v|degree_canon.degree_of(v));
         let group_perms = grouped_vs.into_iter().map(|(_, grp)| { // -> impl Iterator<Item = Permutation> + Clone
             Permutation::iterate_set(grp.collect()).dyn_box()
@@ -258,18 +266,19 @@ impl GraphAdjMatrix {
         //dbg!(all_perms.collect::<Vec<_>>());
         
         //let min_self = all_perms.map(|p|GraphSize(self.apply_permutation(p))).min()
-        let mut automorphims = vec![];
+        let mut automorphisms = vec![];
         let mut min_self = degree_canon.clone();
         for perm in all_perms {
           let candidate = degree_canon.apply_permutation(&perm);
           candidate.partial_cmp(&min_self).expect("Vertex list");
           if candidate < min_self {
             min_self = candidate;
-            automorphims = vec![perm];
+            automorphisms = vec![perm];
           }
-          else if candidate == min_self { automorphims.push(perm)}
+          else if candidate == min_self { automorphisms.push(perm)}
         }
-        (automorphims,min_self)
+        let automorphisms = automorphisms.iter().map(|a|automorphisms[0].inverse().compose(a)).collect();
+        (automorphisms,min_self)
     }
 
     pub fn apply_permutation(&self, p: &Permutation) -> Self {
@@ -613,14 +622,27 @@ pub mod test {
         assert_eq!(k3_m_2.slow_auto_canon().1, k3_minus_the_first.slow_auto_canon().1)
     }
 
-    // #[test] 
-    // fn k5_minus_automorphism() { 
-    //   let c4 = k_n(4).without_edge(0, 2).without_edge(1, 3); 
-    //   let (autos, canon) = c4.slow_auto_canon();
-    //   assert!(autos.len()==2);
-    //   assert!(autos.iter().duplicates().next() == None);
-    //   assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
-    // }
+    #[test] 
+    fn c4_automorphism() { 
+      let c4 = k_n(4).without_edge(0, 2).without_edge(1, 3); 
+      let (autos, canon) = c4.slow_auto_canon();
+      assert_eq!(autos.len(),8);
+      assert!(autos.iter().duplicates().next() == None);
+      assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
+    }
+
+    #[test] 
+    fn p4_automorphism() { 
+      let p4 = k_n(2).with_edges(&vec![(1,2), (2,3)]);
+      let (autos, canon) = p4.slow_auto_canon();
+      let mut id_4 = Permutation::default(); 
+      id_4.1 = smallvec![0,1,2,3];
+      let swapped = id_4.clone().swap(0, 1).swap(2, 3);
+      assert_eq!(autos, vec![id_4, swapped]);
+      assert!(autos.iter().duplicates().next() == None);
+      assert!(autos.iter().all(|a|canon.apply_permutation(a)==canon))
+    }
+
 
     #[test]
     fn k_3_two_ways() {
