@@ -1,5 +1,7 @@
 #![allow(unused)] // tests dont seem to count
 
+use std::borrow::BorrowMut;
+
 use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
 
@@ -136,7 +138,9 @@ functions to write:
     if !is_planar(&expanded) { return None }
     //TODO canonize less
     let (canon_expanded, into_canon) = Self::slow_auto_cannon_with_permutation(&expanded); 
-    (into_canon.apply(v) == canon_expanded.canon_3()?.1).then_some(canon_expanded)
+    let canon_v = into_canon.apply(v);
+    let mut possible_vs = canon_expanded.autos.iter().map(|a|a.apply(canon_v)).dedup();
+    (possible_vs.contains(&canon_expanded.canon_3()?.1)).then_some(canon_expanded)
   }
 
   fn expand_3s(&self) -> impl Iterator<Item = Self> + '_ {
@@ -213,6 +217,14 @@ mod test {
   fn k4_e3_k5m() {
     let k_5_minus = CanonGraph::slow_auto_canon(&k_n(5).without_edge(0, 1));
     assert_eq!(vec![k_5_minus], CanonGraph::slow_auto_canon(&k_n(4)).expand_3s().collect_vec())
+  }
+
+  #[test]
+  fn k5m_e3_bigger() {
+    let k_5_minus = &k_n(5).without_edge(0, 1);
+    let bigger_guy = k_5_minus.with_edges(&[(0,5), (2,5), (3,5)]);
+    assert_eq!(vec![CanonGraph::slow_auto_canon(&bigger_guy)], 
+      CanonGraph::slow_auto_canon(&k_5_minus).expand_3s().collect_vec());
   }
 
   #[test]
