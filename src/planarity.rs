@@ -179,7 +179,7 @@ fn dmp_embed(g: &GraphAdjMatrix) -> Option<PlanarEmbedding> {
         //todo I think this copies |bridge| multiples for some reason, 
         //this line should be writeable without clone (or Copy) I think
         let path_graph = GraphAdjMatrix::default().with_edges(
-            &path.iter().zip(path[1..].iter()).map(|(&x, &y)| (x, y)).collect());
+            &path.iter().zip(path[1..].iter()).map(|(&x, &y)| (x, y)).collect_vec());
         let new_bridges = next_bridge.split_on(&path_graph).into_iter().map(
             |bridge| (bridge, new_faces.into_iter().filter(
                 |&f| can_be_embedded(&faces[f as usize], &face, &bridge)
@@ -202,7 +202,7 @@ fn topologize(mut g: GraphAdjMatrix) -> GraphAdjMatrix {
     g
 }
 
-fn is_planar(g: &GraphAdjMatrix) -> bool {
+pub fn is_planar(g: &GraphAdjMatrix) -> bool {
     let g = topologize(*g); 
     if g.vertices().next().is_none() {return true}
     let cut_vertices : VertexVec = g.vertices().filter(

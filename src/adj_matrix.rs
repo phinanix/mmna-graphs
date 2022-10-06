@@ -26,8 +26,14 @@ pub struct GraphAdjMatrix{
 
 //first thing is array which sends a vertex to its place in the new permutation
 //second thing is a smallvec which tells us which elements are being permuted 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Permutation(pub [Vertex;MAX_VS],pub VertexVec);
+
+impl Debug for Permutation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(&self.0[..=(self.1.iter().copied().max().unwrap_or(0) as usize)].to_owned()).finish()
+    }
+}
 
 impl Default for Permutation {
     fn default() -> Self {
@@ -106,10 +112,22 @@ impl Permutation {
         new_permuation
     }
 
+    pub fn apply3(&self, triangle: [Vertex; 3]) -> [Vertex; 3] {
+        triangle.map(|v|self.apply(v))
+    }
+
 
 }
 
 impl GraphAdjMatrix {
+    pub fn next_vertex(&self) -> Vertex {
+      for i in 0..MAX_VS {
+        if !self.vertex_list[i] {
+          return i as Vertex;
+        }
+      }
+      panic!("alloc: graph full")
+    }
     pub fn add_vertex(&mut self, v: Vertex) {
         self.vertex_list[v as usize] = true
     }
@@ -143,8 +161,8 @@ impl GraphAdjMatrix {
         self
     }
 
-    pub fn with_edges(mut self, edges: &Vec<(Vertex, Vertex)>) -> GraphAdjMatrix {
-        for &(u, v) in edges.iter() {
+    pub fn with_edges(mut self, edges: impl AsRef<[(Vertex, Vertex)]>) -> GraphAdjMatrix {
+        for &(u, v) in edges.as_ref() {
             self.add_edge(u, v)
         }
         self
@@ -191,6 +209,14 @@ impl GraphAdjMatrix {
         let mut new_graph = self.clone(); 
         new_graph.contract_edge(u, v);
         new_graph
+    }
+
+    pub fn has_edge(&self, u: Vertex, v: Vertex) -> bool {
+      return self.adj_matrix[u as usize][v as usize]
+    }
+
+    pub fn has_edges(&self, es: &[(Vertex, Vertex)]) -> bool {
+      return es.iter().all(|&(u,v)| self.has_edge(u, v))
     }
 
     pub fn vertices(&self) -> impl Iterator<Item = Vertex> {
