@@ -82,6 +82,10 @@ impl CanonGraph {
 
 
   fn all_different_triangles(&self) -> Vec<[Vertex; 3]> {
+    // find each triangle up to automorphism exactly once
+    // - do not repeat a triangle 1,2,3 as 1,3,2
+    // - do not repeat a triangle 1,2,3 as automorphic 1',2',3'
+    // by in each case preferring the lexicographically minimum description
     let mut out = vec![];
     for v in self.g.vertices() {
       let neighbors: VertexVec = self.g.neighbors(v).collect();
@@ -89,18 +93,17 @@ impl CanonGraph {
         if n1 < v {
           for &n2 in &neighbors[..i] {
             if self.g.has_edge(n1, n2) {
-              out.push(
-                self.autos.iter().map(|a|a.apply3([n2,n1,v])).min().unwrap()
-              )
+              let triangle = [n2,n1,v];
+              if self.autos.iter().all(|a|triangle <= a.apply_n(triangle)) {
+                out.push([n2,n1,v])
+              }
             }
           }
         }
       }
     }
-    out.dedup();
     out
   }
-
 
 /*
 to enumerate a class of graphs C: 
@@ -160,12 +163,94 @@ functions to write:
     }.into_iter().filter_map(|triangle|self.expand_3(triangle))
   }
 
-  fn expand_triangulation(&self) {
-    //e_3 ++ e_4 ++ e_5
+  fn normalize_square([a,b,c,d]: [Vertex; 4]) -> [Vertex; 4] {
+    let [aa, cc] = if a < c {[a,c]} else {[c,a]};
+    let [bb, dd] = if b < d {[b,d]} else {[d, b]};
+    return [aa,bb,cc,dd]
+  }
+
+  fn all_different_squares(&self) -> Vec<[Vertex; 4]> {
+    //           /a\
+    // a square v | b is represented uniquely as [v,a,b,c] where v<b and a<c
+    //           \c/
+    // as with triangles, automorphisms are resolved by picking the minimum square
+    let mut out = vec![];
+    for v in self.g.vertices() {
+      for [a,b,c] in self.all_different_triangles() {
+        // pick a vertex bb to be opposite v
+        // of the remaining two, pick aa<cc, as [a b c] is in ascending order
+        for [aa,bb,cc] in [[a,b,c],[a,c,b],[b,a,c]] {
+          if v != bb && self.g.has_edges(&[(v, aa), (v, cc)]) {
+            let [v, bb] = if v < bb {[v, bb]} else {[bb, v]};
+            let square = [v,aa,bb,cc];
+            out.push(Self::normalize_square(itertools::min(
+              self.autos.iter().map(|a|a.apply_n(square))
+            ).unwrap()));
+          }
+        }
+      }
+    }
+    out.sort();
+    out.dedup();
+    out
+  }
+
+  fn normalize_pentagon([a,b,c,d,e]: [Vertex; 5]) -> [Vertex; 5] {
+    if a < c {
+      [a,b,c,d,e]
+    } else {
+      [c,b,a,e,d]
+    }
+  }
+
+  fn all_different_pentagons(&self) -> Vec<[Vertex; 5]> {
+    //            v--b--c
+    // a pentagon  \/ \/ is represented uniquely as [v,b,c,d,a] where v<c
+    //              a-d
+    // as with triangles/squares, automorphisms are resolved by picking the minimum penta
+    let mut out = vec![];
+    for v in self.g.vertices() {
+      for [a,b,c,d] in self.all_different_squares() {
+        if  [a,b,c,d].contains(&v) {continue};
+        // pick vertices aa and bb attached to v, where bb becomes the "center"
+        // (aa isn't and bb is on the square's crossbar)
+        for [aa,bb,cc,dd] in [[a,b,c,d],[a,d,c,b],[c,b,a,d],[c,d,a,b]] {
+          if v < cc && self.g.has_edges(&[(v, aa), (v, bb)]) {
+            let penta = [v,bb,cc,dd,aa];
+            out.push(Self::normalize_pentagon(itertools::min(
+              self.autos.iter().map(|a|a.apply_n(penta))
+            ).unwrap()));
+          }
+        }
+      }
+    }
+    out.sort();
+    out.dedup();
+    out
+  }
+
+  fn expand_4s(&self) -> impl Iterator<Item = Self> + '_ {
+    std::iter::once(todo!())
+  }
+  
+  fn expand_5s(&self) -> impl Iterator<Item = Self> + '_ {
+    std::iter::once(todo!())
+  }
+
+  fn expand_triangulation(&self) -> impl Iterator<Item = Self> + '_ {
+    itertools::chain!(
+      self.expand_3s(),
+      self.expand_4s(),
+      self.expand_5s(),
+    )
   }
 }
-
+  
 mod test {
+  use std::collections::{HashSet, BTreeSet};
+
+use literal::{set, SetLiteral};
+
   use crate::{adj_matrix::{test::k_n, Permutation}, unreduce::CanonGraph};
   use super::*;
   
@@ -231,4 +316,44 @@ mod test {
   fn not_all_triangles(){
     assert_eq!(vec![[0,1,2]], CanonGraph::slow_auto_canon(&k_n(4)).all_different_triangles())
   }
+
+  
+  #[test]
+  fn k4_has_square(){
+    assert_eq!(vec![[0,1,2,3]], CanonGraph::slow_auto_canon(&k_n(4)).all_different_squares())
+  }
+
+  #[test]
+  fn k4p4_all_squares() {
+    let k4p4 = k_n(4).with_edges(&[(4,2),(4,3),(4,5),(5,3)]);
+    let (canon_k4p4, to_canon) = CanonGraph::slow_auto_cannon_with_permutation(&k4p4);
+    let expected: BTreeSet<_> = vec![
+      [0,2,1,3],[0,1,2,3],[0,1,3,2],[2,0,3,1],
+      [2,3,5,4],[0,2,4,3]
+    ].into_iter().map(|square|CanonGraph::normalize_square(to_canon.apply_n(square))).collect();
+    assert_eq!(expected, canon_k4p4.all_different_squares()
+      .into_iter().collect())
+  }
+
+  // fails maybe due to automorphsim of k4p4, but maybe not, unsure
+  // #[test] 
+  // fn k4p4_all_pentagons() {
+  //   let k4p4 = k_n(4).with_edges(&[(4,2),(4,3),(4,5),(5,3)]);
+  //   let (canon_k4p4, to_canon) = CanonGraph::slow_auto_cannon_with_permutation(&k4p4);
+  //   let expected: BTreeSet<_> = vec![
+  //     [0,2,4,3,1], [1,3,4,2,0], [0,3,5,4,2]
+  //   ].into_iter().map(|penta|CanonGraph::normalize_pentagon(to_canon.apply_n(penta))).collect();
+  //   assert_eq!(expected, canon_k4p4.all_different_pentagons()
+  //     .into_iter().collect())
+  // }
+
+  // #[test]
+  // fn all_squares_canonical() {
+  //   //wrote to expose bug, but didn't expose bug, mb try again later?
+  //   let k4m_tail = k_n(4).without_edge(0, 2).with_edges(&[(0, 4), (1,5)]);
+  //   let glued = k4m_tail.edge_sum((1,5), (5,1), &k4m_tail).without_edge(6,9)
+  //     .with_edges(&[(7,9), (2,6)]);
+  //   let playing_around = glued.without_vertex(4).without_vertex(9).with_edge(0,7);
+  //   assert_eq!(vec![[0,1,2,3]], CanonGraph::slow_auto_canon(&playing_around).all_different_squares())
+  // }
 }

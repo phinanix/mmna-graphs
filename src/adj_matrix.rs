@@ -44,6 +44,16 @@ impl Default for Permutation {
 
 impl Permutation {
     
+    pub fn from_pairs(pairs: impl Iterator<Item = (Vertex, Vertex)>) -> Self {
+      let mut out = Self::default();
+      for (from, to) in pairs {
+        out.0[from as usize] = to; 
+        assert!(!(out.1.contains(&from)));
+        out.1.push(from);
+      }
+      out
+    }
+
     pub fn apply(&self, v: Vertex) -> Vertex {
         self.0[v as usize]
     }
@@ -112,8 +122,8 @@ impl Permutation {
         new_permuation
     }
 
-    pub fn apply3(&self, triangle: [Vertex; 3]) -> [Vertex; 3] {
-        triangle.map(|v|self.apply(v))
+    pub fn apply_n<const N: usize>(&self, vs: [Vertex; N]) -> [Vertex; N] {
+        vs.map(|v|self.apply(v))
     }
 
 
@@ -244,7 +254,7 @@ impl GraphAdjMatrix {
 
     pub fn apply_permutation(&self, p: &Permutation) -> Self {
         let mut out = GraphAdjMatrix::default();
-        for (u, v) in self.edges().into_iter() {
+        for (u, v) in self.edges() {
             out.add_edge(p.apply(u), p.apply(v))
         }        
         out
@@ -261,6 +271,16 @@ impl GraphAdjMatrix {
             out.add_edge(vertex_map[u as usize], vertex_map[v as usize])
         }
         out
+    }
+
+    pub fn edge_sum(&self, e: (Vertex, Vertex), f: (Vertex, Vertex), other: &GraphAdjMatrix) -> Self {
+      let vertices_to_renumber = other.vertices().filter(|&v| f.0!=v && f.1!=v);
+      let to_add = self.largest_vertex()+1;
+      let vertex_map = vertices_to_renumber.enumerate()
+        .map(|(new_v, old_v)|(old_v, new_v as Vertex+to_add))
+        .chain([(f.0, e.0), (f.1, e.1)]);
+      let permuted_other = other.apply_permutation(&Permutation::from_pairs(vertex_map));
+      self.with_edges(permuted_other.edges().into_iter().collect_vec())
     }
 
     pub fn is_connected(&self) -> bool {
@@ -609,8 +629,21 @@ pub mod test {
     fn k_4_has_neighbors() {
         assert_eq!(vec![1,2,3], k_n(4).neighbors(0).collect::<Vec<_>>())
     }
+
     #[test]
     fn k_3_one_cycle() {
         assert_eq!(vec![0,1,2], k_n(3).find_cycle().into_vec())
+    }
+
+    #[test]
+    fn weld_k3k3_k4m() {
+      assert_eq!(k_n(3).edge_sum((1,2), (1,2), &k_n(3)), k_n(4).without_edge(0, 3))
+    }
+
+    #[test]
+    fn weld_c4c4() {
+      let c4 = k_n(4).without_edge(0, 2).without_edge(1,3);
+      let p4 = c4.without_edge(3,0);
+      assert_eq!(c4.edge_sum((2,3), (2,3), &p4), c4.with_edges(&[(2,5), (4,5)]))
     }
 }
