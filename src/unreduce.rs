@@ -1,6 +1,6 @@
 #![allow(unused)] // tests dont seem to count
 
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, vec};
 
 use itertools::Itertools;
 use smallvec::{smallvec,SmallVec};
@@ -39,6 +39,19 @@ mod perm_iter {
 #[derive(Debug, PartialEq, Eq)]
 struct CanonGraph{ g: GraphAdjMatrix, autos: Vec<Permutation>}
 
+#[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
+struct SquareReduction {remove:Vertex, add: (Vertex, Vertex)}
+impl SquareReduction {
+  // and normalize
+  fn new(remove: Vertex, add: (Vertex, Vertex)) -> Self {
+    Self{remove, add: (if add.0 < add.1 { add } else {(add.1, add.0)})}
+  }
+  fn apply(&self,permutation: &Permutation) -> Self {
+    let [rm,add0,add1] = permutation.apply_n([self.remove, self.add.0, self.add.1]);
+    Self::new(rm, (add0,add1))
+  }
+}
+  
 impl CanonGraph {
   pub fn slow_auto_canon(graph: &GraphAdjMatrix) -> Self {
     Self::slow_auto_cannon_with_permutation(graph).0
@@ -229,8 +242,41 @@ functions to write:
     out
   }
 
+  fn canon_4(&self) -> Option<([usize; 4], SquareReduction)> {
+    // canonical 3-reduction precludes 4-reduction
+    if self.g.vertices().any(|v| { self.g.degree_of(v) == 3}) { return None } 
+    self.g.vertices().flat_map(|v| {
+        //v needs 4 neighbors
+        let (a, b, c, d) = match self.g.neighbors(v).collect_tuple() {
+          Some(x) => x,
+          None => return vec![],
+        };
+        //abcd need to be a cycle in some order
+        [[a,b,c,d],[a,c,b,d],[a,b,d,c]].into_iter().filter_map(move |[a,b,c,d]| {
+          if self.g.has_edges(&[(a,b), (b,c), (c,d),(d,a)]) {
+            let mut deg_seq = [a,b,c,d].map(|v|self.g.degree_of(v));
+            deg_seq.sort();
+            let add_edge = [(a,c),(b,d)].into_iter()
+                          .filter(|&(u,v)|!self.g.has_edge(u, v)).max().expect("non-planar");
+            Some((deg_seq, SquareReduction{remove:v,add:add_edge}))
+          } else {None}
+        }).collect_vec()
+      }).max()
+  }
+  
+  fn expand_4(&self, [a,b,c,d]: [Vertex;4]) -> Option<Self> {
+    let v = self.g.next_vertex();
+    let expanded = self.g.with_edges(&[(a,v),(b,v),(c,v),(d,v)]).without_edge(b, d);
+    if !is_planar(&expanded) { return None }
+    //TODO canonize less
+    let (canon_expanded, into_canon) = Self::slow_auto_cannon_with_permutation(&expanded);
+    let base_reduction = SquareReduction::new(v,(b,d)).apply(&into_canon);
+    let mut possible_reductions = canon_expanded.autos.iter().map(|a|base_reduction.apply(a));
+    (possible_reductions.contains(&canon_expanded.canon_4()?.1)).then_some(canon_expanded)
+  }
+
   fn expand_4s(&self) -> impl Iterator<Item = Self> + '_ {
-    std::iter::once(todo!())
+    self.all_different_squares().into_iter().filter_map(|square|self.expand_4(square))
   }
   
   fn expand_5s(&self) -> impl Iterator<Item = Self> + '_ {
@@ -251,7 +297,7 @@ mod test {
 
 use literal::{set, SetLiteral};
 
-  use crate::{adj_matrix::{test::k_n, Permutation}, unreduce::CanonGraph};
+  use crate::{adj_matrix::{test::{k_n, c_n}, Permutation}, unreduce::CanonGraph};
   use super::*;
   
   #[test] 
@@ -335,25 +381,51 @@ use literal::{set, SetLiteral};
       .into_iter().collect())
   }
 
-  // fails maybe due to automorphsim of k4p4, but maybe not, unsure
-  // #[test] 
-  // fn k4p4_all_pentagons() {
-  //   let k4p4 = k_n(4).with_edges(&[(4,2),(4,3),(4,5),(5,3)]);
-  //   let (canon_k4p4, to_canon) = CanonGraph::slow_auto_cannon_with_permutation(&k4p4);
-  //   let expected: BTreeSet<_> = vec![
-  //     [0,2,4,3,1], [1,3,4,2,0], [0,3,5,4,2]
-  //   ].into_iter().map(|penta|CanonGraph::normalize_pentagon(to_canon.apply_n(penta))).collect();
-  //   assert_eq!(expected, canon_k4p4.all_different_pentagons()
-  //     .into_iter().collect())
-  // }
+  #[test] 
+  fn k4p4_all_pentagons() {
+    let k4p4 = k_n(4).with_edges(&[(4,2),(4,3),(4,5),(5,3)]);
+    let (canon_k4p4, to_canon) = CanonGraph::slow_auto_cannon_with_permutation(&k4p4);
+    let expected: BTreeSet<_> = vec![
+      [0,2,4,3,1], [0,3,4,2,1], [0,3,5,4,2]
+    ].into_iter().map(|penta|CanonGraph::normalize_pentagon(to_canon.apply_n(penta))).collect();
+    assert_eq!(expected, canon_k4p4.all_different_pentagons()
+      .into_iter().collect())
+  }
 
-  // #[test]
-  // fn all_squares_canonical() {
-  //   //wrote to expose bug, but didn't expose bug, mb try again later?
-  //   let k4m_tail = k_n(4).without_edge(0, 2).with_edges(&[(0, 4), (1,5)]);
-  //   let glued = k4m_tail.edge_sum((1,5), (5,1), &k4m_tail).without_edge(6,9)
-  //     .with_edges(&[(7,9), (2,6)]);
-  //   let playing_around = glued.without_vertex(4).without_vertex(9).with_edge(0,7);
-  //   assert_eq!(vec![[0,1,2,3]], CanonGraph::slow_auto_canon(&playing_around).all_different_squares())
-  // }
+  #[test]
+  fn all_squares_canonical() {
+    let k4m_tail = k_n(4).without_edge(0, 2).with_edges(&[(0, 4), (1,5)]);
+    let glued = k4m_tail.edge_sum((1,5), (5,1), &k4m_tail).without_edge(6,9)
+      .with_edges(&[(7,9), (2,6)]);
+    let (canon_glue, to_canon) = CanonGraph::slow_auto_cannon_with_permutation(&glued);
+    let expected = [[6,5,7,8]].into_iter().map(|penta|CanonGraph::normalize_square(to_canon.apply_n(penta))).collect_vec();
+    assert_eq!(expected, canon_glue.all_different_squares())
+  }
+
+  #[test]
+  fn k6m3_reduce(){
+    let k6m3 = k_n(6).without_edge(0, 1).without_edge(2, 3).without_edge(4, 5);
+    assert_eq!(k6m3, CanonGraph::slow_auto_canon(&k6m3).g);
+    assert_eq!(48, CanonGraph::slow_auto_canon(&k6m3).autos.len());
+    assert!(is_planar(&k6m3));
+    let k5m = CanonGraph::slow_auto_canon(&k_n(5).without_edge(0, 1));
+    assert_eq!(k5m.expand_4s().collect_vec(),vec![CanonGraph::slow_auto_canon(&k6m3)]);
+  }
+
+  #[test]
+  fn k6m3_chain_reduce(){
+    fn sort_autos(mut g: CanonGraph) -> CanonGraph {
+      g.autos.sort();
+      g
+    }
+
+    let k6m3_chain = k_n(6).without_edges([(0,1), (0,2), (1,3)]);
+    assert_eq!(k6m3_chain, CanonGraph::slow_auto_canon(&k6m3_chain).g);
+    assert_eq!(4, CanonGraph::slow_auto_canon(&k6m3_chain).autos.len());
+    let double_pentagon = sort_autos(CanonGraph::slow_auto_canon(
+      &c_n(5).with_edges_to(5).with_edges_to(6).without_edge(5,6)));
+    let expanded = CanonGraph::slow_auto_canon(&k6m3_chain)
+      .expand_4s().map(sort_autos).collect_vec();
+    assert_eq!(expanded, vec![double_pentagon])
+  }
 }

@@ -26,7 +26,7 @@ pub struct GraphAdjMatrix{
 
 //first thing is array which sends a vertex to its place in the new permutation
 //second thing is a smallvec which tells us which elements are being permuted 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Permutation(pub [Vertex;MAX_VS],pub VertexVec);
 
 impl Debug for Permutation {
@@ -188,6 +188,13 @@ impl GraphAdjMatrix {
         self
     }
 
+    pub fn without_edges(mut self, edges: impl AsRef<[(Vertex, Vertex)]>) -> GraphAdjMatrix {
+      for &(u, v) in edges.as_ref() {
+        self.delete_edge(u, v)
+      }
+      self 
+    }
+
     pub fn delete_vertex(&mut self, u: Vertex) {
         assert!(self.vertex_list[u as usize]);
 
@@ -219,6 +226,14 @@ impl GraphAdjMatrix {
         let mut new_graph = self.clone(); 
         new_graph.contract_edge(u, v);
         new_graph
+    }
+
+    pub fn with_edges_to(&self, u: Vertex) -> Self {
+      let mut new_graph = self.clone();
+      for v in self.vertices() {
+        new_graph.add_edge(u, v)
+      }
+      new_graph
     }
 
     pub fn has_edge(&self, u: Vertex, v: Vertex) -> bool {
@@ -554,6 +569,15 @@ pub mod test {
         }}
         k_n
     }
+
+    pub fn c_n(n : Vertex) -> GraphAdjMatrix {
+      let mut c_n = GraphAdjMatrix::default(); 
+      for x in 0..n {
+        c_n.add_edge(x, (x+1) % n);
+      }
+      c_n
+    }
+
     #[test]
     fn one_e_el_is_one_e() {
         assert_eq!(one_e(), one_e_el().into())
@@ -643,6 +667,7 @@ pub mod test {
     #[test]
     fn weld_c4c4() {
       let c4 = k_n(4).without_edge(0, 2).without_edge(1,3);
+      assert_eq!(c4, c_n(4));
       let p4 = c4.without_edge(3,0);
       assert_eq!(c4.edge_sum((2,3), (2,3), &p4), c4.with_edges(&[(2,5), (4,5)]))
     }
