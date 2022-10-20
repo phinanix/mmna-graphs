@@ -51,6 +51,24 @@ impl SquareReduction {
     Self::new(rm, (add0,add1))
   }
 }
+
+//add is (x,y,z) representing edges (x,y) (y,z), normalize by x < z
+#[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
+struct PentaReduction {remove:Vertex, add: (Vertex, Vertex, Vertex)}
+impl PentaReduction {
+  // and normalize
+  fn new(remove: Vertex, add: (Vertex, Vertex, Vertex)) -> Self {
+    Self{remove, add: (if add.0 < add.2 { add } else {(add.2, add.1, add.0)})}
+  }
+  fn apply(&self,permutation: &Permutation) -> Self {
+    let [rm,add0,add1,add2] = permutation.apply_n(
+      [self.remove, self.add.0, self.add.1, self.add.2]);
+    Self::new(rm, (add0,add1,add2))
+  }
+}
+
+
+
   
 impl CanonGraph {
   pub fn slow_auto_canon(graph: &GraphAdjMatrix) -> Self {
@@ -245,22 +263,20 @@ functions to write:
   fn canon_4(&self) -> Option<([usize; 4], SquareReduction)> {
     // canonical 3-reduction precludes 4-reduction
     if self.g.vertices().any(|v| { self.g.degree_of(v) == 3}) { return None } 
-    self.g.vertices().flat_map(|v| {
+    self.g.vertices().filter_map(|v| {
         //v needs 4 neighbors
-        let (a, b, c, d) = match self.g.neighbors(v).collect_tuple() {
-          Some(x) => x,
-          None => return vec![],
-        };
+        let (a, b, c, d) = self.g.neighbors(v).collect_tuple()?;
         //abcd need to be a cycle in some order
-        [[a,b,c,d],[a,c,b,d],[a,b,d,c]].into_iter().filter_map(move |[a,b,c,d]| {
-          if self.g.has_edges(&[(a,b), (b,c), (c,d),(d,a)]) {
-            let mut deg_seq = [a,b,c,d].map(|v|self.g.degree_of(v));
-            deg_seq.sort();
-            let add_edge = [(a,c),(b,d)].into_iter()
-                          .filter(|&(u,v)|!self.g.has_edge(u, v)).max().expect("non-planar");
-            Some((deg_seq, SquareReduction{remove:v,add:add_edge}))
-          } else {None}
-        }).collect_vec()
+        let has_cycle =[[a,b,c,d],[a,c,b,d],[a,b,d,c]].into_iter().any(move |[a,b,c,d]| 
+          self.g.has_edges(&[(a,b), (b,c), (c,d),(d,a)]));
+        if has_cycle { 
+          let mut deg_seq = [a,b,c,d].map(|v|self.g.degree_of(v));
+          deg_seq.sort();
+          let add_edge = [a,b,c,d].into_iter().combinations(2).map(|vs|(vs[0], vs[1]))
+                            .filter(|&(u,v)|!self.g.has_edge(u, v)).max()
+                            .expect("non-planar");
+          Some((deg_seq, SquareReduction::new(v,add_edge)))
+        } else {None}
       }).max()
   }
   
@@ -278,9 +294,48 @@ functions to write:
   fn expand_4s(&self) -> impl Iterator<Item = Self> + '_ {
     self.all_different_squares().into_iter().filter_map(|square|self.expand_4(square))
   }
+
+  fn canon_5(&self) -> Option<([usize; 5], PentaReduction)> {
+    // canonical 3-reduction precludes 4-reduction
+    if self.g.vertices().any(|v| { [3,4].contains(&self.g.degree_of(v)) }) { return None } 
+    
+    self.g.vertices().filter_map(|v| {
+      //v needs 5 neighbors
+      let (a, b, c, d, e) = self.g.neighbors(v).collect_tuple()?;
+      //abcde need to be a cycle in some order
+      let mut possible_cycles = [b,c,d,e].into_iter().permutations(4).filter(|vs|vs[0]<vs[3])
+        .map(|vs| [a,vs[0],vs[1],vs[2],vs[3]]);
+      let has_cycle = possible_cycles.any(move |[a,b,c,d,e]| 
+        self.g.has_edges(&[(a,b), (b,c), (c,d), (d,e), (e,a)]));
+      if has_cycle { 
+        let neighbors = [a,b,c,d,e];
+        let mut deg_seq = neighbors.map(|v|self.g.degree_of(v));
+        deg_seq.sort();
+        let add_triple = neighbors.into_iter().filter_map(|v|{
+              let (a,b) = neighbors.into_iter().filter(|&u|!self.g.has_edge(u, v)).collect_tuple()?;
+              Some((a,v,b))
+            }).max().expect("non-planar");
+            Some((deg_seq, PentaReduction::new(v,add_triple)))
+      } else {None}
+    }).max()
+
+
+  }
+  
+  fn expand_5(&self, [a,b,c,d,e]: [Vertex;5]) -> Option<Self> {
+    let v = self.g.next_vertex();
+    let expanded = self.g.with_edges(&[(a,v),(b,v),(c,v),(d,v),(e,v)])
+      .without_edges([(b, d), (b,e)]);
+    if !is_planar(&expanded) { return None }
+    //TODO canonize less
+    let (canon_expanded, into_canon) = Self::slow_auto_cannon_with_permutation(&expanded);
+    let base_reduction = PentaReduction::new(v,(d,b,e)).apply(&into_canon);
+    let mut possible_reductions = canon_expanded.autos.iter().map(|a|base_reduction.apply(a));
+    (possible_reductions.contains(&canon_expanded.canon_5()?.1)).then_some(canon_expanded)
+  }  
   
   fn expand_5s(&self) -> impl Iterator<Item = Self> + '_ {
-    std::iter::once(todo!())
+    self.all_different_pentagons().into_iter().filter_map(|penta|self.expand_5(penta))
   }
 
   fn expand_triangulation(&self) -> impl Iterator<Item = Self> + '_ {
@@ -427,5 +482,20 @@ use literal::{set, SetLiteral};
     let expanded = CanonGraph::slow_auto_canon(&k6m3_chain)
       .expand_4s().map(sort_autos).collect_vec();
     assert_eq!(expanded, vec![double_pentagon])
+  }
+
+  // #[test]
+  // fn first_canon_5(){
+  //   let mut expanded = GraphAdjMatrix::enumerate_all_size(7).flat_map(|g|
+  //     CanonGraph::slow_auto_canon(&g).expand_5s().collect_vec()
+  //   );
+  //   dbg!(&expanded.next());
+  // }
+
+  #[should_panic(expected = "non-planar")]
+  #[test]
+  fn k6_canon5(){
+    let k6 = CanonGraph::slow_auto_canon(&k_n(6));
+    let shouldnotexist = k6.canon_5();
   }
 }
