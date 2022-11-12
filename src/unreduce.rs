@@ -335,7 +335,14 @@ functions to write:
   }  
   
   fn expand_5s(&self) -> impl Iterator<Item = Self> + '_ {
-    self.all_different_pentagons().into_iter().filter_map(|penta|self.expand_5(penta))
+    if self.g.largest_vertex() < 10 {
+      // unless we have 11 distinct vertices, all expansions
+      // will have a <5-order canonical reduction
+      vec![]
+    } else {
+      unimplemented!("Too slow for practical use, pending non-slow-auto-cano");
+      self.all_different_pentagons()
+    }.into_iter().filter_map(|penta|self.expand_5(penta))
   }
 
   fn expand_triangulation(&self) -> impl Iterator<Item = Self> + '_ {
@@ -490,6 +497,38 @@ use literal::{set, SetLiteral};
   //     CanonGraph::slow_auto_canon(&g).expand_5s().collect_vec()
   //   );
   //   dbg!(&expanded.next());
+  // }
+
+  // #[test]
+  // fn finds_canon_5(){
+  //   let k4m = k_n(4).without_edge(0, 1);
+  //   let half = k4m.edge_sum((1,3), (1,3), &k4m).with_edges(&[
+  //     (6,0),(6,1),(6,2),(0,4)
+  //   ]);
+  //   assert_eq!(2, CanonGraph::slow_auto_canon(&half).autos.len());
+  //   let d12r5 = half.edge_sum((4,5), (4,5), &half).with_edges(&[
+  //     (1,8),(0,7),(11,6)
+  //   ]).with_contracted_edge(6, 11);
+  //   println!("strict graph {{");
+  //   for (i,j) in d12r5.edges() {
+  //     println!("  {} -- {}",i,j);
+  //   }
+  //   println!("}}");
+  //   // println!("json graph {{");
+  //   // println!(r#"{{"nodes":["#);
+  //   // for i in d12r5.vertices() {
+  //   //   println!("{{\"id\": \"{}\"}},", i)
+  //   // }
+  //   // println!(r#"],"links": ["#);
+  //   // for (i,j) in d12r5.edges() {
+  //   //   println!("{{\"source\": {}, \"target\": {}, \"value\": 1}},",i,j);
+  //   // }
+  //   // println!("]}}");
+  //   let (d12r5, canon_p) = CanonGraph::slow_auto_cannon_with_permutation(&d12r5);
+  //   assert_eq!(4, d12r5.autos.len());
+  //   assert!(is_planar(&d12r5.g));
+  //   assert_eq!(d12r5.expand_5(canon_p.apply_n([2,6, 9, 8,1])), None);
+  //   //assert_eq!(1, d12r5.expand_5s().count());
   // }
 
   #[should_panic(expected = "non-planar")]
