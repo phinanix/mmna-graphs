@@ -296,7 +296,7 @@ functions to write:
   }
 
   fn canon_5(&self) -> Option<([usize; 5], PentaReduction)> {
-    // canonical 3-reduction precludes 4-reduction
+    // canonical 3/4-reduction precludes 5-reduction
     if self.g.vertices().any(|v| { [3,4].contains(&self.g.degree_of(v)) }) { return None } 
     
     self.g.vertices().filter_map(|v| {
@@ -350,6 +350,22 @@ functions to write:
       self.expand_3s(),
       self.expand_4s(),
       self.expand_5s(),
+    )
+  }
+  fn triangulations_sized(n: Vertex) -> Box<dyn Iterator<Item=Self>>{
+    assert!(n >= 3, "need triangle to triangulate");
+    if n == 3 {
+      return Box::new(
+        std::iter::once(
+          Self::slow_auto_canon(
+            &GraphAdjMatrix::default().with_edges(&[(0,1),(1,2),(0,2)]))
+          )
+      )
+    }
+    Box::new(
+      Self::triangulations_sized(n-1).flat_map(|g|
+        g.expand_triangulation().collect_vec()
+      )
     )
   }
 }
@@ -537,4 +553,13 @@ use literal::{set, SetLiteral};
     let k6 = CanonGraph::slow_auto_canon(&k_n(6));
     let shouldnotexist = k6.canon_5();
   }
+
+  // #[test]
+  // fn num_triangulations() {
+  //   let triangle_counts = 
+  //     (3..=10).map(|i|CanonGraph::triangulations_sized(i).count())
+  //       .collect_vec(); 
+  //       //fails at 8, gives 12 rather than 14
+  //   assert_eq!(vec![1,1,1,2,5,14,50,233], triangle_counts);
+  // }
 }
